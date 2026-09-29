@@ -18,13 +18,21 @@ Endpoints
 
 from __future__ import annotations
 
+import datetime
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from database import (
+    init_db,
+    persist_disruption,
+    persist_hardware_event,
+    persist_kpi_snapshot,
+    persist_schedule_run,
+)
 from optimizer import optimize_schedule, optimizer_summary
 from recommender import build_recommendation
 from simulator import (
@@ -46,9 +54,17 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:4173",
 ]
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
 app = FastAPI(
     title="AI Train Traffic Control Prototype",
     version="1.0.0",
+    lifespan=lifespan,
     description=(
         "Decision-support simulator: normal operation -> disruption injection -> "
         "delay propagation -> CP-SAT re-planning -> rule based safety validation -> "
@@ -99,6 +115,16 @@ class ResetRequest(BaseModel):
     clear_disruptions: bool = Field(
         default=True, description="false keeps the disturbances but drops the optimized plan"
     )
+
+
+class SensorEventPayload(BaseModel):
+    block_id: str = Field(..., description="Hardware sensor ID: 'A1', 'A2', 'B1', 'B2'")
+    state: str = Field(..., description="Occupancy state: 'occupied' or 'free'")
+    event_type: str = Field(default="sensor_triggered", description="Event type")
+    timestamp: int = Field(..., description="Unix epoch timestamp in milliseconds")
+    source: str = Field(..., description="Sensor source identifier, e.g. 'sensor_A1'")
+    seq: int = Field(..., description="Strictly monotonic sequence number per source")
+
 
 
 #: Ready made disturbances used by the demo preset buttons in the UI.
@@ -321,6 +347,9 @@ def read_index() -> Dict[str, Any]:
             "POST /validate",
             "GET /results",
             "POST /reset",
+            "POST /sensor-event",
+            "GET /block-state",
+            "GET /eta-forecast",
         ],
     }
 
@@ -346,7 +375,7 @@ def inject_disruption(request: DisruptionRequest) -> Dict[str, Any]:
         disruption = state.add_disruption(request.model_dump(exclude_none=True))
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    return dashboard(
+    res = dashboard(
         state,
         event={
             "type": "disruption",
@@ -355,6 +384,17 @@ def inject_disruption(request: DisruptionRequest) -> Dict[str, Any]:
             "message": f"Injected: {disruption['label']}",
         },
     )
+    # Write-after-compute persistence
+    persist_disruption(disruption)
+    persist_schedule_run(
+        run_type=state.active_name(),
+        schedule=state.active_schedule(),
+        solver_info=state.solver_info,
+        validation=res["results"]["validation"],
+        kpis=res["results"]["kpis"],
+        disruptions_count=len(state.disruptions),
+    )
+    return res
 
 
 @app.post("/optimize", summary="Run the CP-SAT re-planning model")
@@ -372,7 +412,7 @@ def run_optimizer(request: Optional[OptimizeRequest] = None) -> Dict[str, Any]:
             detail=result["solver"].get("message", "CP-SAT found no feasible plan"),
         )
     state.set_optimized(schedule, result["solver"])
-    return dashboard(
+    res = dashboard(
         state,
         event={
             "type": "optimize",
@@ -380,6 +420,16 @@ def run_optimizer(request: Optional[OptimizeRequest] = None) -> Dict[str, Any]:
             "message": optimizer_summary(result["solver"]),
         },
     )
+    # Write-after-compute persistence
+    persist_schedule_run(
+        run_type="optimized",
+        schedule=state.active_schedule(),
+        solver_info=state.solver_info,
+        validation=res["results"]["validation"],
+        kpis=res["results"]["kpis"],
+        disruptions_count=len(state.disruptions),
+    )
+    return res
 
 
 @app.post("/validate", summary="Rule based safety validation")
@@ -414,7 +464,7 @@ def reset_simulation(request: Optional[ResetRequest] = None) -> Dict[str, Any]:
     else:
         state.optimized = None
         state.solver_info = None
-    return dashboard(
+    res = dashboard(
         state,
         event={
             "type": "reset",
@@ -426,12 +476,60 @@ def reset_simulation(request: Optional[ResetRequest] = None) -> Dict[str, Any]:
             ),
         },
     )
+    # Write-after-compute persistence
+    persist_kpi_snapshot(res["results"]["kpis"])
+    return res
+
+
+@app.post("/sensor-event", summary="Hardware sensor occupancy event intake")
+def receive_sensor_event(payload: SensorEventPayload, request: Request) -> Dict[str, Any]:
+    client_ip = request.client.host if request.client else "unknown"
+    client_port = request.client.port if request.client else "unknown"
+    now_iso = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+    print("\n" + "=" * 78, flush=True)
+    print(f">> [HARDWARE SENSOR EVENT RECEIVED] @ {now_iso}", flush=True)
+    print(f"   Origin: {client_ip}:{client_port} -> POST /sensor-event", flush=True)
+    print(f"   Payload: block_id={payload.block_id!r} | state={payload.state!r} | source={payload.source!r} | seq={payload.seq} | timestamp={payload.timestamp}", flush=True)
+
+    state = get_state()
+    result = state.process_sensor_event(payload.model_dump())
+
+    print(f"   Result: status={result.get('status')} | action={result.get('action_taken')} | seq={result.get('seq')}", flush=True)
+    print(f"   Signals: {state.hardware_signals} | Active Trains: {result.get('active_trains', [])}", flush=True)
+    print(f"   Reason: {state.hardware_reason}", flush=True)
+    print("=" * 78 + "\n", flush=True)
+
+    # Write-after-compute persistence
+    persist_hardware_event(
+        event_payload=payload.model_dump(),
+        client_ip=client_ip,
+        action_taken=result.get("action_taken", "unknown"),
+        signals=state.hardware_signals,
+        reason=state.hardware_reason,
+        active_trains=result.get("active_trains", []),
+        junction_decision=state.last_junction_decision,
+    )
+
+    return result
+
+
+@app.get("/block-state", summary="Advisory signal polling endpoint for hardware")
+def read_block_state() -> Dict[str, Any]:
+    return get_state().get_hardware_block_state()
+
+
+@app.get("/eta-forecast", summary="Advisory ETA predictions to junction")
+def read_eta_forecast() -> Dict[str, Any]:
+    from eta_forecast import get_eta_forecasts
+
+    return get_eta_forecasts(get_state())
 
 
 if __name__ == "__main__":  # pragma: no cover - manual launch helper
     import uvicorn
 
-    host = os.environ.get("HOST", "127.0.0.1")
+    host = os.environ.get("HOST", "0.0.0.0")
     port = int(os.environ.get("PORT", "8000"))
     print("=" * 78)
     print(" AI Train Traffic Control Prototype - decision-support simulation backend")

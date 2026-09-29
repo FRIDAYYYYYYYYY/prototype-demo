@@ -614,7 +614,208 @@ class SimulationState:
         ]
         self.optimized = None
         self.solver_info = None
+        # Hardware junction & sensor state
+        self.sensor_seqs: Dict[str, int] = {}
+        self.last_sensor_event_time: Optional[float] = None
+        self.hardware_state: Dict[str, Dict[str, Any]] = {
+            "A": {"occupied": False, "train_id": "T101"},
+            "B": {"occupied": False, "train_id": "T204"},
+        }
+        self.hardware_arrival_times: Dict[str, Optional[int]] = {"A": None, "B": None}
+        self.hardware_signals: Dict[str, str] = {"A": "PROCEED", "B": "PROCEED"}
+        self.hardware_reason: str = "Junction free. No conflicting movements."
+        self.last_junction_decision: Optional[Dict[str, Any]] = None
         return self
+
+    def process_sensor_event(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process an incoming GPIO sensor event with seq-based idempotency."""
+        import time
+        from optimizer import optimize_junction_conflict
+
+        source = str(event_data.get("source", ""))
+        seq = int(event_data.get("seq", 0))
+        block_id = str(event_data.get("block_id", "")).strip().upper()
+        state = str(event_data.get("state", "")).strip().lower()
+        now_ts = int(event_data.get("timestamp") or (time.time() * 1000))
+
+        # Idempotency check: reject/no-op if seq is not strictly increasing for that source
+        if source in self.sensor_seqs and seq <= self.sensor_seqs[source]:
+            return {
+                "status": "acknowledged",
+                "seq": seq,
+                "action_taken": "duplicate_ignored",
+                "active_trains": self.get_active_hardware_trains(),
+            }
+
+        self.sensor_seqs[source] = seq
+        self.last_sensor_event_time = time.time()
+
+        # State transition according to hardware pin mapping
+        # A1: Train A Approaching -> Approach Block A: occupied
+        # A2: Train A Cleared Junction -> Approach Block A: free
+        # B1: Train B Approaching -> Approach Block B: occupied
+        # B2: Train B Cleared Junction -> Approach Block B: free
+        if block_id == "A1":
+            self.hardware_state["A"]["occupied"] = (state == "occupied")
+            if state == "occupied":
+                self.hardware_arrival_times["A"] = now_ts
+        elif block_id == "A2":
+            self.hardware_state["A"]["occupied"] = False
+            self.hardware_arrival_times["A"] = None
+        elif block_id == "B1":
+            self.hardware_state["B"]["occupied"] = (state == "occupied")
+            if state == "occupied":
+                self.hardware_arrival_times["B"] = now_ts
+        elif block_id == "B2":
+            self.hardware_state["B"]["occupied"] = False
+            self.hardware_arrival_times["B"] = None
+
+        occ_a = self.hardware_state["A"]["occupied"]
+        occ_b = self.hardware_state["B"]["occupied"]
+        train_a = self.hardware_state["A"]["train_id"]
+        train_b = self.hardware_state["B"]["train_id"]
+
+        # Conflict resolution logic (Section 2.3 & 3.2)
+        self.last_junction_decision = None
+        if not occ_a and not occ_b:
+            # Scenario 1: No trains approaching -> junction free
+            self.hardware_signals = {"A": "PROCEED", "B": "PROCEED"}
+            self.hardware_reason = "Junction free. No conflicting movements."
+            action_taken = "state_updated"
+            active_trains = []
+
+        elif occ_a and not occ_b:
+            # Scenario 2: Single train approaching on Approach A
+            self.hardware_signals = {"A": "PROCEED", "B": "HOLD"}
+            name_a = TRAIN_BY_ID[train_a]["name"]
+            type_a = TRAIN_BY_ID[train_a]["type"]
+            self.hardware_reason = f"Train A ({type_a} {train_a} - {name_a}) approaching on clear track. Signal PROCEED granted."
+            action_taken = "signal_granted"
+            active_trains = [train_a]
+
+        elif occ_b and not occ_a:
+            # Scenario 2: Single train approaching on Approach B
+            self.hardware_signals = {"A": "HOLD", "B": "PROCEED"}
+            name_b = TRAIN_BY_ID[train_b]["name"]
+            type_b = TRAIN_BY_ID[train_b]["type"]
+            self.hardware_reason = f"Train B ({type_b} {train_b} - {name_b}) approaching on clear track. Signal PROCEED granted."
+            action_taken = "signal_granted"
+            active_trains = [train_b]
+
+        else:
+            # Scenario 3: Dual train conflict (A1 + B1 active simultaneously)
+            # Calculate dynamic arrival ready offsets (in minutes) from real sensor timestamps
+            ts_a = self.hardware_arrival_times.get("A") or now_ts
+            ts_b = self.hardware_arrival_times.get("B") or now_ts
+            if ts_a <= ts_b:
+                ready_a = 0
+                ready_b = max(0, int(round((ts_b - ts_a) / 60000.0)))
+            else:
+                ready_b = 0
+                ready_a = max(0, int(round((ts_a - ts_b) / 60000.0)))
+
+            weight_a = TRAIN_BY_ID[train_a]["weight"]
+            weight_b = TRAIN_BY_ID[train_b]["weight"]
+            run_a = TRAIN_BY_ID[train_a]["run_min"][ROUTE_BLOCK_IDS[0]]
+            run_b = TRAIN_BY_ID[train_b]["run_min"][ROUTE_BLOCK_IDS[0]]
+            name_a = TRAIN_BY_ID[train_a]["name"]
+            name_b = TRAIN_BY_ID[train_b]["name"]
+
+            # Invoke CP-SAT 2-train junction optimizer
+            solver_res = optimize_junction_conflict(
+                ready_time_a=ready_a,
+                ready_time_b=ready_b,
+                weight_a=weight_a,
+                weight_b=weight_b,
+                run_time_a=run_a,
+                run_time_b=run_b,
+                headway=MIN_HEADWAY_MIN,
+            )
+
+            status_str = solver_res.get("status", "OPTIMAL")
+            obj_val = solver_res.get("objective_value")
+            wall_ms = solver_res.get("wall_time_ms")
+            entry_a_lbl = format_minute(solver_res["entry_a"])
+            entry_b_lbl = format_minute(solver_res["entry_b"])
+            delay_a = solver_res["delay_a"]
+            delay_b = solver_res["delay_b"]
+
+            if solver_res["proceed_train"] == "A":
+                self.hardware_signals = {"A": "PROCEED", "B": "HOLD"}
+                self.hardware_reason = (
+                    f"CP-SAT ({status_str}) prioritizes Train A ({train_a} {name_a}) at {entry_a_lbl}; "
+                    f"holds Train B ({train_b} {name_b}) until {entry_b_lbl} (+{delay_b} min delay) "
+                    f"[obj={obj_val}, {wall_ms}ms]."
+                )
+            else:
+                self.hardware_signals = {"A": "HOLD", "B": "PROCEED"}
+                self.hardware_reason = (
+                    f"CP-SAT ({status_str}) prioritizes Train B ({train_b} {name_b}) at {entry_b_lbl}; "
+                    f"holds Train A ({train_a} {name_a}) until {entry_a_lbl} (+{delay_a} min delay) "
+                    f"[obj={obj_val}, {wall_ms}ms]."
+                )
+
+            self.last_junction_decision = {
+                "ready_time_a": ready_a,
+                "ready_time_b": ready_b,
+                "weight_a": weight_a,
+                "weight_b": weight_b,
+                "entry_a": solver_res["entry_a"],
+                "entry_b": solver_res["entry_b"],
+                "delay_a": solver_res["delay_a"],
+                "delay_b": solver_res["delay_b"],
+                "proceed_train": solver_res["proceed_train"],
+                "hold_train": solver_res["hold_train"],
+                "objective_value": solver_res["objective_value"],
+                "wall_time_ms": solver_res["wall_time_ms"],
+            }
+
+            action_taken = "conflict_evaluated"
+            active_trains = [train_a, train_b]
+
+        return {
+            "status": "acknowledged",
+            "seq": seq,
+            "action_taken": action_taken,
+            "active_trains": active_trains,
+        }
+
+    def get_active_hardware_trains(self) -> List[str]:
+        trains = []
+        if self.hardware_state["A"]["occupied"]:
+            trains.append(self.hardware_state["A"]["train_id"])
+        if self.hardware_state["B"]["occupied"]:
+            trains.append(self.hardware_state["B"]["train_id"])
+        return trains
+
+    def get_hardware_block_state(self) -> Dict[str, Any]:
+        """Advisory signal polling response for ESP32 and UI."""
+        import time
+
+        now_ms = int(time.time() * 1000)
+        is_stale = False
+        if self.last_sensor_event_time is not None:
+            if time.time() - self.last_sensor_event_time > 5.0:
+                is_stale = True
+
+        blocks = [
+            {
+                "block_id": "A",
+                "signal": self.hardware_signals.get("A", "PROCEED"),
+                "train_id": self.hardware_state["A"]["train_id"],
+            },
+            {
+                "block_id": "B",
+                "signal": self.hardware_signals.get("B", "PROCEED"),
+                "train_id": self.hardware_state["B"]["train_id"],
+            },
+        ]
+        return {
+            "timestamp": now_ms,
+            "is_stale": is_stale,
+            "blocks": blocks,
+            "reason": self.hardware_reason,
+        }
 
     def _recompute(self) -> None:
         """Rebuild every derived plan after a disruption / reset."""

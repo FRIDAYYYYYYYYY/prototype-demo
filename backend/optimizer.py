@@ -234,3 +234,64 @@ def optimizer_summary(solver_info: Optional[Dict[str, Any]]) -> str:
         return solver_info.get("message", "No feasible plan found.")
     quality = "optimal" if solver_info.get("optimal") else "best found"
     return f"{quality} plan in {solver_info['wall_time_ms']} ms"
+
+
+def optimize_junction_conflict(
+    ready_time_a: int,
+    ready_time_b: int,
+    weight_a: int = 3,
+    weight_b: int = 2,
+    run_time_a: int = 5,
+    run_time_b: int = 6,
+    headway: int = MIN_HEADWAY_MIN,
+    time_limit_s: float = 2.0,
+) -> Dict[str, Any]:
+    """2-Train Converging Junction CP-SAT Optimization Model.
+
+    Solves mutual exclusion on the shared junction block J1 via AddNoOverlap
+    without imposing an arbitrary linear running-order constraint.
+    Minimizes total passenger-weighted delay based on dynamic arrival ready times.
+    """
+    model = cp_model.CpModel()
+    horizon = max(ready_time_a, ready_time_b) + MAX_HOLD_MIN + 60
+
+    entry_a = model.NewIntVar(ready_time_a, horizon, "entry_a")
+    entry_b = model.NewIntVar(ready_time_b, horizon, "entry_b")
+
+    iv_a = model.NewFixedSizeIntervalVar(entry_a, run_time_a + headway, "iv_a")
+    iv_b = model.NewFixedSizeIntervalVar(entry_b, run_time_b + headway, "iv_b")
+    model.AddNoOverlap([iv_a, iv_b])
+
+    delay_a = model.NewIntVar(0, horizon, "delay_a")
+    delay_b = model.NewIntVar(0, horizon, "delay_b")
+    model.Add(delay_a == entry_a - ready_time_a)
+    model.Add(delay_b == entry_b - ready_time_b)
+
+    # Objective: Minimize passenger-weighted delay
+    model.Minimize(weight_a * delay_a * 1000 + weight_b * delay_b * 1000)
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = float(time_limit_s)
+    solver.parameters.num_search_workers = 1
+    status = solver.Solve(model)
+
+    val_entry_a = int(solver.Value(entry_a))
+    val_entry_b = int(solver.Value(entry_b))
+    val_delay_a = int(solver.Value(delay_a))
+    val_delay_b = int(solver.Value(delay_b))
+    proceed_train = "A" if val_entry_a <= val_entry_b else "B"
+    hold_train = "B" if proceed_train == "A" else "A"
+
+    return {
+        "status": solver.StatusName(status),
+        "optimal": status == cp_model.OPTIMAL,
+        "entry_a": val_entry_a,
+        "entry_b": val_entry_b,
+        "delay_a": val_delay_a,
+        "delay_b": val_delay_b,
+        "proceed_train": proceed_train,
+        "hold_train": hold_train,
+        "objective_value": round(float(solver.ObjectiveValue()), 1),
+        "wall_time_ms": round(solver.WallTime() * 1000.0, 1),
+    }
+

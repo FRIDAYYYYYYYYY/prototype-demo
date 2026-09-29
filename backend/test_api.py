@@ -205,6 +205,220 @@ def test_reset_restores_the_booked_timetable():
     assert payload["results"]["kpis"]["conflicts"] == 0
 
 
+def test_hardware_seq_a_only():
+    reset()
+    # A1 approaches
+    res1 = client.post(
+        "/sensor-event",
+        json={
+            "block_id": "A1",
+            "state": "occupied",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500000000,
+            "source": "sensor_A1",
+            "seq": 1,
+        },
+    )
+    assert res1.status_code == 200
+    p1 = res1.json()
+    assert p1["status"] == "acknowledged"
+    assert p1["action_taken"] == "signal_granted"
+    assert p1["active_trains"] == ["T101"]
+
+    bs1 = client.get("/block-state").json()
+    assert bs1["blocks"][0]["block_id"] == "A"
+    assert bs1["blocks"][0]["signal"] == "PROCEED"
+    assert bs1["blocks"][1]["block_id"] == "B"
+    assert bs1["blocks"][1]["signal"] == "HOLD"
+
+    # A2 clears
+    res2 = client.post(
+        "/sensor-event",
+        json={
+            "block_id": "A2",
+            "state": "free",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500005000,
+            "source": "sensor_A2",
+            "seq": 1,
+        },
+    )
+    assert res2.status_code == 200
+    p2 = res2.json()
+    assert p2["action_taken"] == "state_updated"
+    assert p2["active_trains"] == []
+
+    bs2 = client.get("/block-state").json()
+    assert bs2["blocks"][0]["signal"] == "PROCEED"
+    assert bs2["blocks"][1]["signal"] == "PROCEED"
+
+
+def test_hardware_seq_b_only():
+    reset()
+    # B1 approaches
+    res1 = client.post(
+        "/sensor-event",
+        json={
+            "block_id": "B1",
+            "state": "occupied",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500000000,
+            "source": "sensor_B1",
+            "seq": 1,
+        },
+    )
+    assert res1.status_code == 200
+    p1 = res1.json()
+    assert p1["status"] == "acknowledged"
+    assert p1["action_taken"] == "signal_granted"
+    assert p1["active_trains"] == ["T204"]
+
+    bs1 = client.get("/block-state").json()
+    assert bs1["blocks"][0]["signal"] == "HOLD"
+    assert bs1["blocks"][1]["signal"] == "PROCEED"
+
+    # B2 clears
+    res2 = client.post(
+        "/sensor-event",
+        json={
+            "block_id": "B2",
+            "state": "free",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500005000,
+            "source": "sensor_B2",
+            "seq": 1,
+        },
+    )
+    assert res2.status_code == 200
+    p2 = res2.json()
+    assert p2["active_trains"] == []
+
+
+def test_hardware_seq_forward_conflict():
+    reset()
+    # A1 approaches first
+    client.post(
+        "/sensor-event",
+        json={
+            "block_id": "A1",
+            "state": "occupied",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500000000,
+            "source": "sensor_A1",
+            "seq": 1,
+        },
+    )
+    # B1 approaches before A2 clears -> Conflict!
+    res_conflict = client.post(
+        "/sensor-event",
+        json={
+            "block_id": "B1",
+            "state": "occupied",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500002000,
+            "source": "sensor_B1",
+            "seq": 1,
+        },
+    )
+    assert res_conflict.status_code == 200
+    p = res_conflict.json()
+    assert p["action_taken"] == "conflict_evaluated"
+    assert set(p["active_trains"]) == {"T101", "T204"}
+
+    bs = client.get("/block-state").json()
+    # T101 (Express, weight 3) prioritised over T204 (Passenger, weight 2)
+    assert bs["blocks"][0]["signal"] == "PROCEED"
+    assert bs["blocks"][1]["signal"] == "HOLD"
+    assert "holds Train B" in bs["reason"]
+    assert "CP-SAT" in bs["reason"]
+
+
+def test_hardware_seq_reverse_conflict():
+    reset()
+    # B1 approaches first
+    client.post(
+        "/sensor-event",
+        json={
+            "block_id": "B1",
+            "state": "occupied",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500000000,
+            "source": "sensor_B1",
+            "seq": 1,
+        },
+    )
+    # A1 approaches before B2 clears -> Conflict!
+    res_conflict = client.post(
+        "/sensor-event",
+        json={
+            "block_id": "A1",
+            "state": "occupied",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500002000,
+            "source": "sensor_A1",
+            "seq": 1,
+        },
+    )
+    assert res_conflict.status_code == 200
+    p = res_conflict.json()
+    assert p["action_taken"] == "conflict_evaluated"
+    assert set(p["active_trains"]) == {"T101", "T204"}
+
+    bs = client.get("/block-state").json()
+    # T101 (Express, weight 3) prioritised by CP-SAT solver
+    assert bs["blocks"][0]["signal"] == "PROCEED"
+    assert bs["blocks"][1]["signal"] == "HOLD"
+    assert "holds Train B" in bs["reason"]
+
+
+def test_hardware_seq_duplicate_debounce():
+    reset()
+    # First event seq=100
+    res1 = client.post(
+        "/sensor-event",
+        json={
+            "block_id": "A1",
+            "state": "occupied",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500000000,
+            "source": "sensor_A1",
+            "seq": 100,
+        },
+    )
+    assert res1.json()["action_taken"] == "signal_granted"
+
+    # Duplicate / out-of-order event seq=100 or seq=99
+    res_dup = client.post(
+        "/sensor-event",
+        json={
+            "block_id": "A1",
+            "state": "occupied",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500000100,
+            "source": "sensor_A1",
+            "seq": 100,
+        },
+    )
+    assert res_dup.status_code == 200
+    assert res_dup.json()["action_taken"] == "duplicate_ignored"
+
+    # strictly greater seq=101 is accepted
+    res_next = client.post(
+        "/sensor-event",
+        json={
+            "block_id": "A2",
+            "state": "free",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500005000,
+            "source": "sensor_A1",
+            "seq": 101,
+        },
+    )
+    assert res_next.status_code == 200
+    assert res_next.json()["action_taken"] == "state_updated"
+
+
+
 def _all_tests():
     test_names = sorted(name for name in globals() if name.startswith("test_"))
     return [globals()[name] for name in test_names]
