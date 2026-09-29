@@ -67,4 +67,4 @@ The software backend:
 | **End-to-End Hardware Loop** | Physical sensor activation updates backend state and drives hardware LEDs within $<2\text{ s}$. | Physical sensor triggering test with live ESP32 polling. |
 | **Algorithmic Outperformance** | CP-SAT demonstrates measurable reduction in total passenger-weighted delay vs. FCFS. | Live KPI comparison card and schedule diff metrics. |
 | **Safety & Constraint Adherence** | 100% adherence to $3\text{ min}$ headway separation, platform limits, and track possession closures. | Independent validation pass via `backend/validator.py`. |
-| **Deterministic Reliability** | 10/10 automated test suites passing + 3 consecutive successful physical rehearsal runs. | Automated pytest suite & recorded fallback video. |
+| **Deterministic Reliability** | 27/27 automated test suites passing + 3 consecutive successful physical rehearsal runs. | Automated pytest suite & recorded fallback video. |

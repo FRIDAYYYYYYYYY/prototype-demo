@@ -116,7 +116,7 @@ To ensure rock-solid stability before the final round, the implementation is div
 | :--- | :--- | :---: | :--- |
 | **Phase 1** | Contract & Schema Lock | **COMPLETE** | Hardware pinouts and API payloads locked. |
 | **Phase 2** | Endpoint Implementation & State Machine | **COMPLETE** | `/sensor-event`, `/block-state`, `optimizer.py`, `simulator.py` integrated. |
-| **Phase 3** | Verification Against Synthetic Sequences | **COMPLETE** | 15/15 unit & integration tests passing. |
+| **Phase 3** | Verification Against Synthetic Sequences | **COMPLETE** | 27/27 unit & integration tests passing. |
 | **Phase 4** | Live Hardware Hookup & Wireless Integration | **IN PROGRESS** | Backend listening on `0.0.0.0:8000` with live request logger; awaiting physical ESP32 trigger. |
 | **Phase 5** | Demo Scenario: CP-SAT vs Legacy Local Rule | **QUEUED** | Ready for live benchmark run. |
 | **Section 3.7**| **PostgreSQL Persistence Layer** | **COMPLETE** | Schema verified against real Postgres dialect (PostgreSQL 16 with native JSONB types & cascades); functional tests pass against SQLite stand-in; never run against a live Postgres server in this environment. |
