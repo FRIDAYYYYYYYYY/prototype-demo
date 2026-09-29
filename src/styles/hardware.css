@@ -1,0 +1,212 @@
+/* ============================================================
+   Hardware bridge: device, API contract, GPIO mapping
+   ============================================================ */
+
+.hardware {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--gap-md);
+}
+.hardware__device {
+  grid-column: span 5;
+}
+.hardware__contract {
+  grid-column: span 7;
+}
+.hardware__pins {
+  grid-column: span 12;
+}
+
+.device {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+.device__head {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  padding: var(--gap-md);
+  border-radius: var(--r-lg);
+  background: var(--primary-softer);
+  border: 1px solid var(--primary-line);
+}
+.device__icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: var(--r-md);
+  color: var(--on-primary);
+  background: var(--grad-primary);
+  transition: transform var(--t-base) var(--ease-spring);
+}
+.device__head:hover .device__icon {
+  transform: scale(1.06) rotate(-5deg);
+}
+.device__head div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.device__head strong {
+  font-size: 14.5px;
+  color: var(--text-strong);
+  font-weight: 600;
+}
+.device__head small {
+  font-size: 11.5px;
+  color: var(--text-mute);
+}
+.device__head .statusdot {
+  margin-left: auto;
+}
+
+.device__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap-sm);
+}
+
+/* ---------- API contract ---------- */
+
+.endpoints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.endpoint {
+  display: grid;
+  grid-template-columns: 62px 168px 1fr auto;
+  align-items: center;
+  gap: var(--gap-sm);
+  padding: 11px 13px;
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  border: 1px solid transparent;
+  transition:
+    transform var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard),
+    background var(--t-fast) var(--ease-standard);
+}
+.endpoint:hover {
+  transform: translateX(3px);
+  border-color: var(--line);
+  background: var(--surface-2);
+}
+.endpoint__path {
+  font-size: 12.5px;
+  color: var(--text-strong);
+}
+.endpoint__purpose {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.endpoint__auth {
+  font-size: 10.5px;
+  color: var(--text-mute);
+}
+
+.schema {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  padding: var(--gap-md);
+  border-radius: var(--r-md);
+  background: var(--secondary-softer);
+  border: 1px solid var(--secondary-line);
+}
+.schema__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--secondary);
+}
+.schema__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.schema__row {
+  display: grid;
+  grid-template-columns: 116px 150px 1fr;
+  align-items: center;
+  gap: var(--gap-sm);
+  font-size: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--line);
+}
+.schema__row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.schema__field {
+  color: var(--text-strong);
+}
+.schema__type {
+  color: var(--primary);
+  font-size: 11.5px;
+}
+.schema__example {
+  color: var(--text-mute);
+  font-size: 11.5px;
+}
+
+/* ---------- GPIO table ---------- */
+
+.pintable {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.pintable__head,
+.pintable__row {
+  display: grid;
+  grid-template-columns: 120px 90px 110px 130px 1fr;
+  align-items: center;
+  gap: var(--gap-sm);
+}
+.pintable__head {
+  font-size: 10.5px;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: var(--text-mute);
+  font-weight: 600;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.pintable__row {
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  border: 1px solid transparent;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  transition:
+    transform var(--t-fast) var(--ease-standard),
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard);
+}
+.pintable__row:hover {
+  transform: translateX(3px);
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+.pintable__row b {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+.pintable__sig {
+  justify-self: start;
+  color: var(--primary);
+  font-size: 11.5px;
+}
+.pintable__note svg {
+  color: var(--warn);
+}

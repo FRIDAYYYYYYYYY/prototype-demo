@@ -1,0 +1,221 @@
+/* ============================================================
+   RailGuard AI - design tokens
+   ------------------------------------------------------------
+   A polished application surface with dark and light themes.
+
+   Themes: dark (default) and light, selected via [data-theme].
+   ============================================================ */
+
+:root {
+  /* ---------- Brand (used sparingly: primary actions only) ---------- */
+  --primary: #1a56db;
+  --primary-strong: #1e429f;
+  --primary-soft: #eff4ff;
+  --primary-softer: #f5f8ff;
+  --primary-line: #c3d3f7;
+  --on-primary: #ffffff;
+
+  --secondary: #0f766e;
+  --secondary-strong: #115e59;
+  --secondary-soft: #f0fdfa;
+  --secondary-softer: #f5fefd;
+  --secondary-line: #b7e0db;
+  --on-secondary: #ffffff;
+
+  /* ---------- Surfaces: white and neutral greys ---------- */
+  --bg: #ffffff;
+  --bg-deep: #f7f8fa;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --surface-3: #f4f5f7;
+  --surface-sunken: #f0f1f4;
+  --glass: rgba(255, 255, 255, 0.92);
+  --glass-2: rgba(255, 255, 255, 0.96);
+  --overlay: rgba(17, 24, 39, 0.4);
+
+  /* ---------- Lines: crisp 1px borders do the structural work ---------- */
+  --line: #e3e5e9;
+  --line-strong: #cfd3da;
+  --line-soft: #eef0f2;
+
+  /* ---------- Text: near-black to grey ---------- */
+  --text: #1f2328;
+  --text-strong: #0a0d12;
+  --text-dim: #4a5159;
+  --text-mute: #6e7681;
+  --on-surface: #ffffff;
+
+  /* ---------- Semantic status: muted, legible ---------- */
+  --success: #157347;
+  --success-soft: #eaf6ef;
+  --success-line: #bcdfc9;
+
+  --warn: #8a5200;
+  --warn-soft: #fdf3e6;
+  --warn-line: #edd3ab;
+
+  --danger: #b42318;
+  --danger-soft: #fdefee;
+  --danger-line: #f2c4c0;
+
+  --muted: #6e7681;
+  --muted-soft: #f2f3f5;
+
+  /* ---------- Chart series: readable, print-safe ---------- */
+  --series-a: #1a56db; /* CP-SAT / optimised */
+  --series-b: #9aa1ab; /* Legacy baseline */
+  --series-c: #0f766e;
+  --series-d: #5b21b6;
+  --series-e: #8a5200;
+  --series-f: #0e6f8a;
+
+  /* ---------- Diagram (SVG corridor) ---------- */
+  --track-a: #d7dae0;
+  --track-b: #e9ebef;
+  --svg-surface: #fafbfc;
+  --svg-idle: rgba(17, 24, 39, 0.04);
+  --svg-idle-line: rgba(17, 24, 39, 0.14);
+
+  /* ---------- Gradients: solid fills only, kept for compatibility ---------- */
+  --grad-primary: var(--primary);
+  --grad-secondary: var(--secondary);
+  --grad-brand: var(--primary);
+  --grad-surface: none;
+  --grad-hero: none;
+
+  /* ---------- Shadows: true black, soft and layered ---------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 6px 16px rgba(0, 0, 0, 0.08), 0 12px 28px rgba(0, 0, 0, 0.06);
+  --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.12), 0 24px 56px rgba(0, 0, 0, 0.1);
+  --ring: 0 0 0 3px rgba(26, 86, 219, 0.22);
+  --ring-danger: 0 0 0 3px rgba(180, 35, 24, 0.2);
+
+  /* ---------- Radii: small and consistent ---------- */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 12px;
+  --r-2xl: 14px;
+  --r-pill: 999px;
+
+  /* ---------- Rhythm ---------- */
+  --gap-xs: 4px;
+  --gap-sm: 8px;
+  --gap-md: 14px;
+  --gap-lg: 20px;
+  --gap-xl: 30px;
+  --gap-2xl: 40px;
+  --pad-card: 20px;
+  --pad-section: 32px;
+
+  /* ---------- Type: system-like, familiar ---------- */
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif;
+  --heading: var(--sans);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* ---------- Motion: short and functional ---------- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --t-fast: 120ms;
+  --t-base: 180ms;
+  --t-slow: 260ms;
+
+  color-scheme: light;
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================
+   Dark theme - near-black surfaces
+   ============================================================ */
+
+[data-theme='dark'] {
+  --primary: #6b9bff;
+  --primary-strong: #9dbcff;
+  --primary-soft: rgba(107, 155, 255, 0.14);
+  --primary-softer: rgba(107, 155, 255, 0.07);
+  --primary-line: rgba(107, 155, 255, 0.32);
+  --on-primary: #0a0d12;
+
+  --secondary: #4bb8ae;
+  --secondary-strong: #6fd0c6;
+  --secondary-soft: rgba(75, 184, 174, 0.14);
+  --secondary-softer: rgba(75, 184, 174, 0.07);
+  --secondary-line: rgba(75, 184, 174, 0.32);
+  --on-secondary: #0a0d12;
+
+  --bg: #090a0c;
+  --bg-deep: #060708;
+  --surface: #101215;
+  --surface-2: #15181c;
+  --surface-3: #1b1f24;
+  --surface-sunken: #08090b;
+  --glass: rgba(16, 18, 21, 0.94);
+  --glass-2: rgba(16, 18, 21, 0.97);
+  --overlay: rgba(0, 0, 0, 0.6);
+
+  --line: #292d33;
+  --line-strong: #3a4048;
+  --line-soft: #202328;
+
+  --text: #e6e8eb;
+  --text-strong: #ffffff;
+  --text-dim: #b3b9c2;
+  --text-mute: #8b929c;
+  --on-surface: #090a0c;
+
+  --success: #55c08a;
+  --success-soft: rgba(85, 192, 138, 0.14);
+  --success-line: rgba(85, 192, 138, 0.3);
+
+  --warn: #e0a458;
+  --warn-soft: rgba(224, 164, 88, 0.14);
+  --warn-line: rgba(224, 164, 88, 0.3);
+
+  --danger: #f08a80;
+  --danger-soft: rgba(240, 138, 128, 0.14);
+  --danger-line: rgba(240, 138, 128, 0.3);
+
+  --muted: #8b929c;
+  --muted-soft: rgba(139, 146, 156, 0.14);
+
+  --series-a: #6b9bff;
+  --series-b: #6b7280;
+  --series-c: #4bb8ae;
+  --series-d: #a78bfa;
+  --series-e: #e0a458;
+  --series-f: #38b6d4;
+
+  --track-a: #30353c;
+  --track-b: #3c424a;
+  --svg-surface: #111418;
+  --svg-idle: rgba(255, 255, 255, 0.04);
+  --svg-idle-line: rgba(255, 255, 255, 0.14);
+
+  --shadow-sm: 0 5px 16px rgba(0, 0, 0, 0.24), 0 1px 0 rgba(255, 255, 255, 0.025) inset;
+  --shadow-md: 0 8px 22px rgba(0, 0, 0, 0.32), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  --shadow-lg: 0 12px 30px rgba(0, 0, 0, 0.38), 0 1px 0 rgba(255, 255, 255, 0.045) inset;
+  --shadow-xl: 0 18px 44px rgba(0, 0, 0, 0.52), 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  --ring: 0 0 0 3px rgba(107, 155, 255, 0.35);
+
+  color-scheme: dark;
+}
+
+/* Smooth theme cross-fade - enabled only after the first paint */
+html.theme-ready body,
+html.theme-ready body * {
+  transition:
+    background-color var(--t-base) var(--ease-standard),
+    border-color var(--t-base) var(--ease-standard),
+    color var(--t-base) var(--ease-standard);
+}

@@ -1,0 +1,332 @@
+/* ============================================================
+   Reusable components: cards, badges, buttons, meters, stats
+   ============================================================ */
+
+/* Tone system - one class drives colour everywhere.
+   Kept intentionally narrow: primary, secondary, status, neutral. */
+.tone-primary,
+.tone-teal,
+.tone-indigo,
+.tone-cyan,
+.tone-blue,
+.tone-emerald {
+  --tone: var(--primary);
+  --tone-soft: var(--primary-soft);
+  --tone-line: var(--primary-line);
+}
+.tone-secondary,
+.tone-violet {
+  --tone: var(--secondary);
+  --tone-soft: var(--secondary-soft);
+  --tone-line: var(--secondary-line);
+}
+.tone-success {
+  --tone: var(--success);
+  --tone-soft: var(--success-soft);
+  --tone-line: var(--success-line);
+}
+.tone-warn {
+  --tone: var(--warn);
+  --tone-soft: var(--warn-soft);
+  --tone-line: var(--warn-line);
+}
+.tone-danger {
+  --tone: var(--danger);
+  --tone-soft: var(--danger-soft);
+  --tone-line: var(--danger-line);
+}
+.tone-muted,
+.tone-slate {
+  --tone: var(--muted);
+  --tone-soft: var(--muted-soft);
+  --tone-line: var(--line);
+}
+
+/* ---------- Card ---------- */
+
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  padding: var(--pad-card);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  animation: card-enter 520ms var(--ease-out) both;
+  transition:
+    transform var(--t-base) var(--ease-out),
+    border-color var(--t-fast) var(--ease-standard),
+    box-shadow var(--t-fast) var(--ease-standard);
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-lg);
+}
+
+.card__note {
+  font-size: 13px;
+  color: var(--text-mute);
+  line-height: 1.6;
+  max-width: 92ch;
+}
+
+/* ---------- Panel header ---------- */
+
+.panel__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.panel__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--r-sm);
+  color: var(--tone, var(--primary));
+  background: var(--tone-soft, var(--primary-soft));
+  border: 1px solid var(--tone-line, var(--primary-line));
+}
+
+.panel__title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.panel__meta {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-mute);
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  border: 1px solid var(--line-soft);
+  white-space: nowrap;
+}
+
+/* ---------- Badge ---------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  color: var(--tone, var(--text-dim));
+  background: var(--tone-soft, var(--muted-soft));
+  border: 1px solid var(--tone-line, var(--line));
+  white-space: nowrap;
+}
+
+.badge__dot {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
+.badge__dot.is-pulsing {
+  animation: blink 1.6s ease-in-out infinite;
+}
+
+/* ---------- Status dot ---------- */
+
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  background: var(--surface);
+  white-space: nowrap;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard),
+    color var(--t-fast) var(--ease-standard);
+}
+.btn:hover {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+}
+.btn:active {
+  background: var(--surface-sunken);
+}
+
+.btn--sm {
+  font-size: 12.5px;
+  padding: 6px 11px;
+}
+
+.btn--primary {
+  color: var(--on-primary);
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.btn--primary:hover {
+  background: var(--primary-strong);
+  border-color: var(--primary-strong);
+}
+
+.btn--outline {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.btn--outline:hover {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+.btn--ghost:hover {
+  background: var(--surface-3);
+  border-color: transparent;
+  color: var(--text-strong);
+}
+
+/* ---------- Meter ---------- */
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.meter__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.meter__value {
+  color: var(--text-strong);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.meter__track {
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+}
+.meter__fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--tone, var(--primary));
+  transform-origin: left center;
+  animation: grow-x 0.7s var(--ease-out) both;
+  transition: width var(--t-slow) var(--ease-out);
+}
+
+/* ---------- Sparkline ---------- */
+
+.spark {
+  display: block;
+  color: var(--tone, var(--primary));
+  overflow: visible;
+}
+.spark__ping {
+  opacity: 0.35;
+  animation: pulse-ring 2.6s var(--ease-out) infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* ---------- Stat ---------- */
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 11px;
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  border: 1px solid var(--line-soft);
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard);
+}
+.stat:hover {
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+.stat__value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--tone, var(--primary));
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.stat__label {
+  font-size: 11.5px;
+  color: var(--text-mute);
+}
+
+/* ---------- Dots used in legends ---------- */
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.dot.is-legacy {
+  background: var(--series-b);
+}
+.dot.is-cpsat {
+  background: var(--series-a);
+}
+
+/* ---------- Shared code chips ---------- */
+
+code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  border: 1px solid var(--line-soft);
+  color: var(--text-strong);
+}
+
+.statusdot {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.statusdot__core {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--tone, var(--success));
+}
+.statusdot__label {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}

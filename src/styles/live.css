@@ -1,0 +1,374 @@
+/* ============================================================
+   Live junction: corridor map, event stream, replays
+   ============================================================ */
+
+.livegrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--gap-md);
+  align-items: start;
+}
+.livegrid__map {
+  grid-row: span 2;
+}
+.livegrid__replays {
+  grid-column: 2;
+}
+
+.corridor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+}
+
+/* Light diagram canvas */
+.corridor__svg {
+  width: 100%;
+  height: auto;
+  border-radius: var(--r-lg);
+  background: var(--svg-surface);
+  border: 1px solid var(--line-soft);
+}
+
+.corridor__flow {
+  animation: dash-flow 3.6s linear infinite;
+}
+
+.corridor__approach,
+.corridor__junction {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+}
+.corridor__junction {
+  fill: var(--text-dim);
+  letter-spacing: 0.22em;
+}
+
+.block {
+  animation: fade-in 0.8s var(--ease-standard) both;
+}
+.block.is-active rect {
+  animation: blink 2.4s ease-in-out infinite;
+}
+.block__id,
+.block__gpio {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+}
+.block__gpio {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.junction__halo {
+  fill: var(--primary-softer);
+  stroke: var(--primary-line);
+  stroke-width: 1;
+  animation: soft-pulse 3s ease-in-out infinite;
+}
+.junction__shape {
+  fill: var(--primary-soft);
+  stroke: var(--primary);
+  stroke-width: 1.6;
+}
+.junction__text {
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  fill: var(--text-strong);
+}
+
+.lamp__on {
+  animation: blink 1.8s ease-in-out infinite;
+}
+.lamp__label {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+/* Trains roll gently back and forth along the block */
+.train {
+  color: var(--primary);
+  animation: roll-in 6s ease-in-out infinite alternate;
+}
+.train--violet {
+  color: var(--secondary);
+  animation-duration: 7.4s;
+  animation-direction: alternate-reverse;
+}
+.train__body {
+  fill: currentColor;
+  opacity: 0.95;
+}
+.train__win {
+  fill: var(--surface);
+  opacity: 0.9;
+}
+.train__nose {
+  fill: var(--surface);
+  opacity: 0.75;
+}
+.train__wheel {
+  fill: var(--text-mute);
+  opacity: 0.55;
+}
+.train__label {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+@keyframes roll-in {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(150px);
+  }
+}
+
+.corridor__signals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.sigrow {
+  display: grid;
+  grid-template-columns: 74px 96px 1fr auto;
+  align-items: center;
+  gap: var(--gap-sm);
+  padding: 9px 13px;
+  border-radius: var(--r-md);
+  background: var(--tone-soft, var(--surface-3));
+  border: 1px solid var(--tone-line, var(--line-soft));
+  animation: slide-in-left 0.5s var(--ease-out) both;
+  transition: transform var(--t-fast) var(--ease-standard);
+}
+.sigrow:hover {
+  transform: translateX(3px);
+}
+.sigrow__id {
+  font-size: 12px;
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+/* ---------- Event stream ---------- */
+
+.evlist {
+  list-style: none;
+  margin: 0;
+  padding: 0 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 372px;
+  overflow-y: auto;
+}
+
+.evrow {
+  display: grid;
+  grid-template-columns: 52px 78px 78px 1fr 52px 66px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  border: 1px solid transparent;
+  font-size: 12px;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    transform var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard);
+  animation: fade-in 0.45s var(--ease-standard) both;
+}
+.evrow:hover {
+  background: var(--surface-2);
+  border-color: var(--line);
+  transform: translateX(3px);
+}
+.evrow__seq {
+  color: var(--text-mute);
+  font-size: 11.5px;
+}
+.evrow__block {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.evrow__block b {
+  color: var(--text-strong);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.evrow__block small {
+  color: var(--text-mute);
+  font-size: 10px;
+}
+.evrow__result {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evrow__ms {
+  color: var(--primary);
+  text-align: right;
+  font-size: 11.5px;
+}
+.evrow__src {
+  color: var(--text-mute);
+  font-size: 10.5px;
+  text-align: right;
+}
+
+/* Shared footnote block used across panels */
+.evlist__foot,
+.chart__foot,
+.pintable__note,
+.vlist__note,
+.conflict__note {
+  display: flex;
+  gap: 8px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-mute);
+  padding-top: var(--gap-sm);
+  border-top: 1px dashed var(--line);
+}
+.evlist__foot svg,
+.chart__foot svg,
+.vlist__note svg,
+.conflict__note svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--primary);
+}
+
+/* ---------- Replay list ---------- */
+
+.replaylist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.replay {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: var(--gap-sm);
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  border: 1px solid transparent;
+  transition:
+    background var(--t-fast) var(--ease-standard),
+    transform var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard);
+}
+.replay:hover {
+  background: var(--surface-2);
+  border-color: var(--line);
+  transform: translateX(3px);
+}
+.replay__id {
+  font-size: 11.5px;
+  color: var(--secondary);
+  font-weight: 700;
+}
+.replay__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.replay__body strong {
+  font-size: 13px;
+  color: var(--text-strong);
+  font-weight: 550;
+}
+.replay__body code {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 1px 6px;
+}
+.replay__body small {
+  font-size: 11px;
+  color: var(--text-mute);
+}
+
+.sigrow__reason {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sigrow__since {
+  font-size: 11.5px;
+  color: var(--text-mute);
+}
+
+/* --- Live signal strip (rendered from GET /block-state) ------------------ */
+
+.signalstrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 0;
+  list-style: none;
+}
+.signalstrip__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.signalstrip__label {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+/* --- Replay run button (replaces the static pass tick when live) ---------- */
+
+.replay__run {
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.replay__run:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.replay__run:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.replay__run:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
