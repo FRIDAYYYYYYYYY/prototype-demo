@@ -35,6 +35,7 @@ import {
   YAxis,
 } from 'recharts'
 import Header from './components/Header'
+import JunctionCompareChart from './components/JunctionCompareChart'
 import KPICards from './components/KPICards'
 import RailwayView from './components/RailwayView'
 import {
@@ -657,6 +658,9 @@ export default function App() {
                 </Box>
               </Card>
             </Box>
+
+            {/* Junction Optimization Benchmark Card */}
+            <JunctionCompareChart />
           </>
         ) : null}
 
