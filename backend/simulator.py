@@ -616,6 +616,7 @@ class SimulationState:
         self.solver_info = None
         # Hardware junction & sensor state
         self.sensor_seqs: Dict[str, int] = {}
+        self.sensor_last_times: Dict[str, float] = {}
         self.last_sensor_event_time: Optional[float] = None
         self.hardware_state: Dict[str, Dict[str, Any]] = {
             "A": {"occupied": False, "train_id": "T101"},
@@ -637,14 +638,21 @@ class SimulationState:
         block_id = str(event_data.get("block_id", "")).strip().upper()
         state = str(event_data.get("state", "")).strip().lower()
         now_ts = int(event_data.get("timestamp") or (time.time() * 1000))
+        current_time = time.time()
 
-        # Idempotency and reboot handling:
-        # - seq == last_seq: duplicate -> reject
-        # - seq < last_seq and seq <= 3: reboot -> accept, reset source seq, clear occupancy
-        # - seq < last_seq and seq > 3: stale packet -> reject
-        # - seq > last_seq: normal -> accept
+        # Idempotency and hardened reboot handling:
+        # 1. seq == last_seq: duplicate -> reject
+        # 2. Check if a reboot occurred:
+        #    a) seq < last_seq for this source, and (seq <= 3 or time_gap > 10.0s)
+        #    b) seq <= 3 from any source while previous sources were advanced (> 3)
+        # 3. Otherwise, if seq < last_seq within 10s: stale/replayed packet -> reject
+        # 4. seq > last_seq: normal -> accept
+        is_reboot = False
         if source in self.sensor_seqs:
             last_seq = self.sensor_seqs[source]
+            last_time = self.sensor_last_times.get(source, current_time)
+            time_gap = current_time - last_time
+
             if seq == last_seq:
                 return {
                     "status": "acknowledged",
@@ -653,17 +661,8 @@ class SimulationState:
                     "active_trains": self.get_active_hardware_trains(),
                 }
             elif seq < last_seq:
-                if seq <= 3:
-                    # Reboot detected: reset sequence tracker, clear stale occupancy for this source
-                    print(
-                        f"\n>> [SOURCE REBOOT DETECTED] source={source!r} old_seq={last_seq} new_seq={seq} "
-                        f"- resetting sequence tracker and clearing stale occupancy state.",
-                        flush=True,
-                    )
-                    track_prefix = "A" if (block_id.startswith("A") or "A" in source.upper()) else "B"
-                    if track_prefix in self.hardware_state:
-                        self.hardware_state[track_prefix]["occupied"] = False
-                        self.hardware_arrival_times[track_prefix] = None
+                if seq <= 3 or time_gap > 10.0:
+                    is_reboot = True
                 else:
                     return {
                         "status": "acknowledged",
@@ -671,9 +670,27 @@ class SimulationState:
                         "action_taken": "duplicate_ignored",
                         "active_trains": self.get_active_hardware_trains(),
                     }
+        else:
+            if any(s > 3 for s in self.sensor_seqs.values()) and seq <= 3:
+                is_reboot = True
+
+        if is_reboot:
+            old_info = dict(self.sensor_seqs)
+            print(
+                f"\n>> [SOURCE REBOOT DETECTED] source={source!r} new_seq={seq} previous_seqs={old_info} "
+                f"- resetting ALL source seq trackers and clearing ALL track occupancy state.",
+                flush=True,
+            )
+            self.sensor_seqs.clear()
+            self.sensor_last_times.clear()
+            self.hardware_state["A"]["occupied"] = False
+            self.hardware_arrival_times["A"] = None
+            self.hardware_state["B"]["occupied"] = False
+            self.hardware_arrival_times["B"] = None
 
         self.sensor_seqs[source] = seq
-        self.last_sensor_event_time = time.time()
+        self.sensor_last_times[source] = current_time
+        self.last_sensor_event_time = current_time
 
         # State transition according to hardware pin mapping
         # A1: Train A Approaching -> Approach Block A: occupied

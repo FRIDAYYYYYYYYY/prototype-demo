@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from main import app  # noqa: E402
 from recommender import CLEAN_SUMMARY  # noqa: E402
-from simulator import BOOKED_ORDER  # noqa: E402
+from simulator import BOOKED_ORDER, get_state  # noqa: E402
 
 client = TestClient(app)
 
@@ -418,16 +418,10 @@ def test_hardware_seq_duplicate_debounce():
     assert res_next.json()["action_taken"] == "state_updated"
 
 
-def test_esp32_reboot_handling_and_stale_occupancy_clearing():
-    """Verify adaptive reboot handling:
-    1. seq <= 3 after high seq is accepted as a reboot.
-    2. Stale occupancy from before reboot is cleared.
-    3. Handles firmware booting at seq=0 and seq=1.
-    4. Real duplicates (seq == last_seq or seq < last_seq with seq > 3) are rejected.
-    """
+def test_esp32_reboot_start_seq_zero_clears_stale_occupancy():
+    """Verify ESP32 reboot with start seq=0 is accepted and clears stale occupancy."""
     reset()
-
-    # 1. Normal run up to seq=50 (Track A occupied)
+    # 1. Normal event seq=50 leaves Track A occupied
     res1 = client.post(
         "/sensor-event",
         json={
@@ -442,8 +436,8 @@ def test_esp32_reboot_handling_and_stale_occupancy_clearing():
     assert res1.json()["action_taken"] == "signal_granted"
     assert res1.json()["active_trains"] == ["T101"]
 
-    # 2. Firmware reboots and starts at seq=0 with free state
-    res_reboot0 = client.post(
+    # 2. Firmware reboots at seq=0 with free state
+    res_reboot = client.post(
         "/sensor-event",
         json={
             "block_id": "A1",
@@ -454,40 +448,15 @@ def test_esp32_reboot_handling_and_stale_occupancy_clearing():
             "seq": 0,
         },
     )
-    assert res_reboot0.status_code == 200
-    assert res_reboot0.json()["action_taken"] == "state_updated"
-    assert res_reboot0.json()["active_trains"] == []  # Stale occupancy was cleared!
+    assert res_reboot.status_code == 200
+    assert res_reboot.json()["action_taken"] == "state_updated"
+    assert res_reboot.json()["active_trains"] == []  # Stale occupancy cleared
 
-    # 3. Next monotonic event seq=1 after reboot is accepted
-    res_seq1 = client.post(
-        "/sensor-event",
-        json={
-            "block_id": "A1",
-            "state": "occupied",
-            "event_type": "sensor_triggered",
-            "timestamp": 1732500002000,
-            "source": "sensor_A1",
-            "seq": 1,
-        },
-    )
-    assert res_seq1.json()["action_taken"] == "signal_granted"
-    assert res_seq1.json()["active_trains"] == ["T101"]
 
-    # 4. Duplicate seq=1 immediately rejected
-    res_dup1 = client.post(
-        "/sensor-event",
-        json={
-            "block_id": "A1",
-            "state": "occupied",
-            "event_type": "sensor_triggered",
-            "timestamp": 1732500002050,
-            "source": "sensor_A1",
-            "seq": 1,
-        },
-    )
-    assert res_dup1.json()["action_taken"] == "duplicate_ignored"
-
-    # 5. Advance to seq=80 on sensor_B1
+def test_esp32_reboot_start_seq_one_accepted():
+    """Verify ESP32 reboot with start seq=1 is accepted after high seq."""
+    reset()
+    # 1. Advance to seq=80 on sensor_B1
     client.post(
         "/sensor-event",
         json={
@@ -500,12 +469,12 @@ def test_esp32_reboot_handling_and_stale_occupancy_clearing():
         },
     )
 
-    # 6. Firmware reboot with boot start value of seq=1 on sensor_B1
+    # 2. Firmware reboot with boot start value of seq=1 on sensor_B1
     res_reboot1 = client.post(
         "/sensor-event",
         json={
             "block_id": "B1",
-            "state": "free",
+            "state": "occupied",
             "event_type": "sensor_triggered",
             "timestamp": 1732500004000,
             "source": "sensor_B1",
@@ -513,22 +482,118 @@ def test_esp32_reboot_handling_and_stale_occupancy_clearing():
         },
     )
     assert res_reboot1.status_code == 200
-    assert res_reboot1.json()["action_taken"] in ("state_updated", "signal_granted")
+    assert res_reboot1.json()["action_taken"] == "signal_granted"
+    assert res_reboot1.json()["active_trains"] == ["T204"]
 
-    # 7. Stale packet with seq=25 arriving after seq=80 is still rejected as duplicate/stale
+
+def test_esp32_shared_counter_reboot_time_gap():
+    """Verify shared-counter case: B1 last seen at seq 50, 15s gap, next B1 seq 7 is accepted as a reboot."""
+    reset()
+    state = get_state()
+    import time
+
+    # 1. B1 active at seq=50
+    res1 = client.post(
+        "/sensor-event",
+        json={
+            "block_id": "B1",
+            "state": "occupied",
+            "event_type": "sensor_triggered",
+            "timestamp": int(time.time() * 1000),
+            "source": "sensor_B1",
+            "seq": 50,
+        },
+    )
+    assert res1.json()["action_taken"] == "signal_granted"
+    assert res1.json()["active_trains"] == ["T204"]
+
+    # 2. Simulate 15-second gap from ESP32 reboot / reconnect
+    state.sensor_last_times["sensor_B1"] = time.time() - 15.0
+
+    # 3. Next event arrives as seq=7 (shared counter on ESP32 advanced from other pins)
+    res_reboot = client.post(
+        "/sensor-event",
+        json={
+            "block_id": "B1",
+            "state": "occupied",
+            "event_type": "sensor_triggered",
+            "timestamp": int(time.time() * 1000),
+            "source": "sensor_B1",
+            "seq": 7,
+        },
+    )
+    assert res_reboot.status_code == 200
+    assert res_reboot.json()["action_taken"] == "signal_granted"
+    assert res_reboot.json()["active_trains"] == ["T204"]
+
+
+def test_esp32_stale_packet_within_time_window():
+    """Verify stale packet (seq 10 after seq 20 within 50ms) is still rejected."""
+    reset()
+    # 1. High sequence event seq=20
+    client.post(
+        "/sensor-event",
+        json={
+            "block_id": "A1",
+            "state": "occupied",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500000000,
+            "source": "sensor_A1",
+            "seq": 20,
+        },
+    )
+
+    # 2. Stale packet seq=10 arriving immediately after (<10s window) is rejected
     res_stale = client.post(
         "/sensor-event",
         json={
             "block_id": "A1",
             "state": "occupied",
             "event_type": "sensor_triggered",
-            "timestamp": 1732500005000,
+            "timestamp": 1732500000050,
             "source": "sensor_A1",
-            "seq": 4,  # seq > 3 but < 50
+            "seq": 10,
         },
     )
-    # sensor_A1 current seq is 1, so seq=4 > 1 is normal
-    assert res_stale.json()["action_taken"] == "signal_granted"
+    assert res_stale.status_code == 200
+    assert res_stale.json()["action_taken"] == "duplicate_ignored"
+
+
+def test_esp32_reboot_on_a1_clears_both_tracks():
+    """Verify reboot triggered by A1 clears stale occupancy across both Track A and Track B."""
+    reset()
+    # 1. Track B is occupied
+    client.post(
+        "/sensor-event",
+        json={
+            "block_id": "B1",
+            "state": "occupied",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500000000,
+            "source": "sensor_B1",
+            "seq": 40,
+        },
+    )
+    bs = client.get("/block-state").json()
+    assert any(b["signal"] == "PROCEED" and b["train_id"] == "T204" for b in bs["blocks"])
+
+    # 2. ESP32 reboots and sends A1 seq=0 with free state
+    res_reboot = client.post(
+        "/sensor-event",
+        json={
+            "block_id": "A1",
+            "state": "free",
+            "event_type": "sensor_triggered",
+            "timestamp": 1732500001000,
+            "source": "sensor_A1",
+            "seq": 0,
+        },
+    )
+    assert res_reboot.status_code == 200
+    assert res_reboot.json()["active_trains"] == []
+    # Verify both tracks are cleared in block-state
+    bs_after = client.get("/block-state").json()
+    assert bs_after["reason"] == "Junction free. No conflicting movements."
 
 
 
