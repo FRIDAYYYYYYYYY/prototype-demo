@@ -1,0 +1,265 @@
+/* ============================================================
+   Analytics: bar chart, trend line, donut, deferred layers
+   ============================================================ */
+
+.analytics {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--gap-lg);
+  row-gap: var(--gap-xl);
+}
+.chart {
+  grid-column: span 6;
+}
+.chart--donut {
+  grid-column: span 4;
+}
+.chart--roadmap {
+  grid-column: span 8;
+}
+
+.chart__note {
+  font-size: 12px;
+  color: var(--text-mute);
+  line-height: 1.6;
+  margin-top: -6px;
+}
+.chart__legend {
+  display: flex;
+  gap: var(--gap-md);
+  font-size: 11.5px;
+  color: var(--text-mute);
+}
+.chart__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------- Bar chart ---------- */
+
+.barchart {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--gap-sm);
+  height: 216px;
+  align-items: end;
+}
+.barchart__group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  height: 100%;
+  justify-content: flex-end;
+}
+.barchart__bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  height: 100%;
+}
+.barchart__bar {
+  width: 26px;
+  border-radius: 7px 7px 3px 3px;
+  transform-origin: bottom;
+  animation: grow-bar 0.85s var(--ease-out) both;
+  transition:
+    filter var(--t-fast) var(--ease-standard),
+    transform var(--t-fast) var(--ease-standard);
+}
+.barchart__bar:hover {
+  filter: brightness(1.08);
+  transform: scaleY(1.03);
+}
+.barchart__bar.is-legacy {
+  background: var(--series-b);
+}
+.barchart__bar.is-cpsat {
+  background: var(--series-a);
+}
+.barchart__label {
+  font-size: 11px;
+  color: var(--text-mute);
+  text-align: center;
+  line-height: 1.25;
+}
+.barchart__delta {
+  font-size: 11px;
+  color: var(--success);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Line chart ---------- */
+
+.linechart {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.linechart__grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.linechart__ylab,
+.linechart__xlab {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--text-mute);
+}
+.linechart__main {
+  stroke: var(--primary);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1200;
+  animation: draw-line 1.6s var(--ease-out) both;
+}
+.linechart__legacy {
+  stroke: var(--series-b);
+  stroke-width: 1.6;
+  stroke-dasharray: 6 6;
+  opacity: 0.9;
+}
+.linechart__dot {
+  fill: var(--primary);
+  stroke: var(--surface);
+  stroke-width: 1.8;
+  animation: fade-in 0.6s 1s var(--ease-standard) both;
+  transition: r 0.2s var(--ease-spring);
+}
+.linechart__dot:hover {
+  r: 5;
+}
+
+/* ---------- Donut ---------- */
+
+.donut {
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  align-items: center;
+  gap: var(--gap-md);
+}
+.donut__svg {
+  width: 100%;
+  height: auto;
+}
+.donut__bg {
+  fill: none;
+  stroke: var(--surface-sunken);
+  stroke-width: 16;
+}
+.donut__seg {
+  fill: none;
+  stroke-width: 16;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  animation: fade-in 0.7s var(--ease-standard) both;
+  transition: stroke-width var(--t-fast) var(--ease-standard);
+}
+.donut__seg:hover {
+  stroke-width: 20;
+}
+.donut__value {
+  font-family: var(--heading);
+  font-size: 26px;
+  font-weight: 700;
+  fill: var(--text-strong);
+}
+.donut__cap {
+  font-family: var(--sans);
+  font-size: 11px;
+  fill: var(--text-mute);
+  letter-spacing: 0.06em;
+}
+.donut__legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.donut__legend li {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.donut__legend b {
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+.donut__legend small {
+  color: var(--text-mute);
+  font-size: 11px;
+}
+
+/* ---------- Deferred tech columns ---------- */
+
+.techgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gap-md);
+}
+.techcol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+.techcol__head {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  color: var(--text-mute);
+}
+.techcol ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.techcol li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-sm);
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-3);
+  border: 1px solid transparent;
+  transition:
+    transform var(--t-fast) var(--ease-standard),
+    border-color var(--t-fast) var(--ease-standard);
+}
+.techcol li:hover {
+  transform: translateY(-2px);
+  border-color: var(--line);
+}
+.techcol li div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.techcol li strong {
+  font-size: 12.5px;
+  color: var(--text-strong);
+  font-weight: 550;
+}
+.techcol li small {
+  font-size: 10.5px;
+  color: var(--text-mute);
+}

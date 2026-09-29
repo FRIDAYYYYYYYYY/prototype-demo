@@ -1,40 +1,62 @@
-import axios from 'axios'
+// API client for the FastAPI backend.
+//
+// The dashboard renders live backend data; `src/data/*.js` only supplies the
+// shapes and the offline fallback so the page is still meaningful when the
+// backend is not running. Every helper resolves to `null` on failure rather
+// than throwing, because a dropped backend must degrade the dashboard, never
+// break it mid-demo.
 
-/** Backend base URL: override with VITE_API_BASE_URL in a local .env file. */
-export const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
-).replace(/\/+$/, '')
+const RAW_BASE = import.meta.env.VITE_API_BASE_URL
+const BASE = (RAW_BASE ?? 'http://127.0.0.1:8000').replace(/\/+$/, '')
 
-export const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 30000,
-  headers: { 'Content-Type': 'application/json' },
-})
+/** Milliseconds before a request is abandoned. */
+const TIMEOUT_MS = 8000
 
-/** Turn an axios failure into something a dispatcher can act on. */
-export function describeApiError(error) {
-  const detail = error?.response?.data?.detail
-  if (typeof detail === 'string' && detail.length > 0) {
-    return detail
+async function request(path, { method = 'GET', body, signal } = {}) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    const response = await fetch(`${BASE}${path}`, {
+      method,
+      signal: signal ?? controller.signal,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    if (!response.ok) return null
+    return await response.json()
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
   }
-  if (Array.isArray(detail) && detail.length > 0) {
-    return detail.map((item) => item.msg || JSON.stringify(item)).join('; ')
-  }
-  if (error?.code === 'ERR_NETWORK' || error?.code === 'ECONNABORTED') {
-    return `Cannot reach the simulation backend at ${API_BASE_URL}. Start it with "python backend/main.py".`
-  }
-  return error?.message || 'Unexpected error while talking to the backend.'
 }
 
-export const getHealth = () => api.get('/health').then((response) => response.data)
-export const getState = () => api.get('/state').then((response) => response.data)
-export const getResults = () => api.get('/results').then((response) => response.data)
-export const getScenarios = () => api.get('/scenarios').then((response) => response.data)
-export const injectDisruption = (payload) =>
-  api.post('/disruption', payload).then((response) => response.data)
-export const runOptimizer = (payload = {}) =>
-  api.post('/optimize', payload).then((response) => response.data)
-export const validatePlan = (schedule = 'active') =>
-  api.post('/validate', { schedule }).then((response) => response.data)
-export const resetSimulation = (payload = { clear_disruptions: true }) =>
-  api.post('/reset', payload).then((response) => response.data)
+export const api = {
+  base: BASE,
+
+  health: () => request('/health'),
+  state: () => request('/state'),
+  results: () => request('/results'),
+  scenarios: () => request('/scenarios'),
+
+  // Phase A/B - physical junction
+  hardwareContract: () => request('/hardware/contract'),
+  hardwareStatus: () => request('/hardware/status'),
+  blockState: () => request('/block-state'),
+  sensorEvent: (event) => request('/sensor-event', { method: 'POST', body: event }),
+  resetSensorState: () => request('/sensor-event/reset', { method: 'POST' }),
+
+  // Corridor controls
+  optimize: (body = { time_limit_s: 5 }) => request('/optimize', { method: 'POST', body }),
+  disrupt: (body) => request('/disruption', { method: 'POST', body }),
+  reset: () => request('/reset', { method: 'POST', body: { clear_disruptions: true } }),
+
+  // Phase D - persistence
+  persistence: () => request('/persistence'),
+
+  // Phase F - ML advisory layer
+  mlStatus: () => request('/ml/status'),
+  mlInsights: () => request('/ml/insights', { method: 'POST' }),
+}
+
+export default api
