@@ -3,8 +3,8 @@
 Verifies:
 1. Synthetic data generation and feature matrix dimensions.
 2. Gradient Boosting model training and non-zero MAE improvement over baseline.
-3. Response schema for GET /eta-forecast (train_id, baseline_eta_s, ml_eta_s, advisory, data_source='synthetic').
-4. Speed clamping flag per-class (Express, Passenger, Freight).
+3. Response schema for GET /eta-forecast (mode='static_timetable', raw_timetable_speed_kmh, assumed_speed_kmh <= 110).
+4. Speed clamping flag per-class (Express capped at 110, Passenger, Freight).
 5. Fail-safe behavior (falls back to baseline without breaking /block-state or /sensor-event).
 """
 
@@ -44,6 +44,7 @@ def test_get_eta_forecast_endpoint():
     assert resp.status_code == 200
 
     data = resp.json()
+    assert data["mode"] == "static_timetable"
     assert data["advisory"] is True
     assert data["data_source"] == "synthetic"
     assert "evaluation_metrics" in data
@@ -57,7 +58,9 @@ def test_get_eta_forecast_endpoint():
         assert "name" in item
         assert "type" in item
         assert "distance_to_junction_km" in item
+        assert "raw_timetable_speed_kmh" in item
         assert "assumed_speed_kmh" in item
+        assert item["assumed_speed_kmh"] <= 110.0  # Capped at corridor max speed
         assert "clamped" in item
         assert isinstance(item["clamped"], bool)
         assert "baseline_eta_s" in item
@@ -77,6 +80,7 @@ def test_eta_failsafe_fallback(monkeypatch):
     resp = client.get("/eta-forecast")
     assert resp.status_code == 200
     data = resp.json()
+    assert data["mode"] == "static_timetable"
     assert data["advisory"] is True
     assert data["evaluation_metrics"]["benchmark"] == "synthetic, planted effects"
     for item in data["forecasts"]:

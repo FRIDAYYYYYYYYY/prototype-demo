@@ -638,14 +638,39 @@ class SimulationState:
         state = str(event_data.get("state", "")).strip().lower()
         now_ts = int(event_data.get("timestamp") or (time.time() * 1000))
 
-        # Idempotency check: reject/no-op if seq is not strictly increasing for that source
-        if source in self.sensor_seqs and seq <= self.sensor_seqs[source]:
-            return {
-                "status": "acknowledged",
-                "seq": seq,
-                "action_taken": "duplicate_ignored",
-                "active_trains": self.get_active_hardware_trains(),
-            }
+        # Idempotency and reboot handling:
+        # - seq == last_seq: duplicate -> reject
+        # - seq < last_seq and seq <= 3: reboot -> accept, reset source seq, clear occupancy
+        # - seq < last_seq and seq > 3: stale packet -> reject
+        # - seq > last_seq: normal -> accept
+        if source in self.sensor_seqs:
+            last_seq = self.sensor_seqs[source]
+            if seq == last_seq:
+                return {
+                    "status": "acknowledged",
+                    "seq": seq,
+                    "action_taken": "duplicate_ignored",
+                    "active_trains": self.get_active_hardware_trains(),
+                }
+            elif seq < last_seq:
+                if seq <= 3:
+                    # Reboot detected: reset sequence tracker, clear stale occupancy for this source
+                    print(
+                        f"\n>> [SOURCE REBOOT DETECTED] source={source!r} old_seq={last_seq} new_seq={seq} "
+                        f"- resetting sequence tracker and clearing stale occupancy state.",
+                        flush=True,
+                    )
+                    track_prefix = "A" if (block_id.startswith("A") or "A" in source.upper()) else "B"
+                    if track_prefix in self.hardware_state:
+                        self.hardware_state[track_prefix]["occupied"] = False
+                        self.hardware_arrival_times[track_prefix] = None
+                else:
+                    return {
+                        "status": "acknowledged",
+                        "seq": seq,
+                        "action_taken": "duplicate_ignored",
+                        "active_trains": self.get_active_hardware_trains(),
+                    }
 
         self.sensor_seqs[source] = seq
         self.last_sensor_event_time = time.time()

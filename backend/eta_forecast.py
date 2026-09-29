@@ -34,8 +34,9 @@ logger = logging.getLogger("train_traffic.eta_forecast")
 CLASS_MAPPING = {"Express": 0, "Passenger": 1, "Freight": 2}
 PEAK_HOURS = {8, 9, 10, 17, 18, 19}
 
+# Per-class operational speed bounds capped at corridor max speed (110 km/h)
 CLASS_SPEED_RANGES: Dict[str, Tuple[float, float]] = {
-    "Express": (80.0, 115.0),
+    "Express": (80.0, 110.0),
     "Passenger": (60.0, 90.0),
     "Freight": (35.0, 65.0),
 }
@@ -70,17 +71,17 @@ def generate_synthetic_dataset(
     train_classes = rng.choice([0, 1, 2], size=n_samples, p=[0.4, 0.35, 0.25])
     distances_km = rng.uniform(1.0, 20.0, size=n_samples)
 
-    # Base speeds dependent on train class inside realistic training ranges
+    # Base speeds dependent on train class inside realistic training ranges (capped at corridor max 110 km/h)
     base_speeds = np.where(
         train_classes == 0,
-        rng.uniform(80.0, 115.0, size=n_samples),  # Express: 80-115 km/h
+        rng.uniform(80.0, 110.0, size=n_samples),  # Express: 80-110 km/h
         np.where(
             train_classes == 1,
             rng.uniform(60.0, 90.0, size=n_samples),   # Passenger: 60-90 km/h
             rng.uniform(35.0, 65.0, size=n_samples),   # Freight: 35-65 km/h
         ),
     )
-    speeds_kmh = np.clip(base_speeds + rng.normal(0, 4, size=n_samples), 25.0, 120.0)
+    speeds_kmh = np.clip(base_speeds + rng.normal(0, 4, size=n_samples), 25.0, 110.0)
 
     hours = rng.randint(6, 23, size=n_samples)
     peak_flags = np.array([1 if h in PEAK_HOURS else 0 for h in hours])
@@ -192,21 +193,21 @@ def get_eta_forecasts(state: Any = None) -> Dict[str, Any]:
         train_name = train["name"]
         train_type = train["type"]
 
-        # Derive raw speed from booked run time across approach block (BL1)
+        # Derive raw speed from booked timetable run time across approach block (BL1)
         run_min = float(train["run_min"].get(approach_block["id"], 6))
-        raw_speed = (approach_dist_km / (run_min / 60.0))
+        raw_timetable_speed_kmh = round(approach_dist_km / (run_min / 60.0), 1)
 
         # Clamp to realistic training range for train class
         min_speed, max_speed = CLASS_SPEED_RANGES.get(train_type, (60.0, 90.0))
         clamped = False
-        if raw_speed < min_speed:
+        if raw_timetable_speed_kmh < min_speed:
             assumed_speed_kmh = round(min_speed, 1)
             clamped = True
-        elif raw_speed > max_speed:
+        elif raw_timetable_speed_kmh > max_speed:
             assumed_speed_kmh = round(max_speed, 1)
             clamped = True
         else:
-            assumed_speed_kmh = round(raw_speed, 1)
+            assumed_speed_kmh = round(raw_timetable_speed_kmh, 1)
 
         hour = 10  # 10:00 AM simulation start horizon
         peak_flag = 1 if hour in PEAK_HOURS else 0
@@ -243,6 +244,7 @@ def get_eta_forecasts(state: Any = None) -> Dict[str, Any]:
             "name": train_name,
             "type": train_type,
             "distance_to_junction_km": approach_dist_km,
+            "raw_timetable_speed_kmh": raw_timetable_speed_kmh,
             "assumed_speed_kmh": assumed_speed_kmh,
             "clamped": clamped,
             "prior_delay_min": prior_delay,
@@ -253,6 +255,7 @@ def get_eta_forecasts(state: Any = None) -> Dict[str, Any]:
         })
 
     return {
+        "mode": "static_timetable",
         "advisory": True,
         "disclaimer": "Advisory ETA forecast for decision support only - not an autonomous movement authority",
         "data_source": "synthetic",
