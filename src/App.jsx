@@ -35,6 +35,7 @@ import {
   YAxis,
 } from 'recharts'
 import Header from './components/Header'
+import JunctionPanel from './components/JunctionPanel'
 import KPICards from './components/KPICards'
 import RailwayView from './components/RailwayView'
 import {
@@ -414,6 +415,9 @@ export default function App() {
 
             {/* Enterprise Telemetry Metric Cards */}
             <KPICards kpis={results.kpis} />
+
+            {/* Live physical junction loop (ESP32 advisory aspects) */}
+            <JunctionPanel />
 
             {/* Topological Track & Signal Interlocking Map */}
             <RailwayView

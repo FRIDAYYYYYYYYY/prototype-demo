@@ -38,3 +38,14 @@ export const validatePlan = (schedule = 'active') =>
   api.post('/validate', { schedule }).then((response) => response.data)
 export const resetSimulation = (payload = { clear_disruptions: true }) =>
   api.post('/reset', payload).then((response) => response.data)
+
+// --- Physical junction hardware (ESP32 loop) ---------------------------------
+export const getBlockState = () => api.get('/block-state').then((response) => response.data)
+export const getHardwareStatus = () =>
+  api.get('/hardware/status').then((response) => response.data)
+export const getHardwareContract = () =>
+  api.get('/hardware/contract').then((response) => response.data)
+export const postSensorEvent = (payload) =>
+  api.post('/sensor-event', payload).then((response) => response.data)
+export const resetHardware = () =>
+  api.post('/sensor-event/reset').then((response) => response.data)
