@@ -1,7 +1,7 @@
 """Advisory ETA Forecast Module for Junction Approach.
 
 Uses a Gradient Boosting Regressor trained on synthetic corridor telemetry
-to predict realistic time-to-junction (seconds), accounting for train class,
+to predict time-to-junction (seconds), accounting for train class,
 approach distance, assumed speed, peak traffic windows, and upstream delays.
 
 DATA SOURCE NOTE:
@@ -20,6 +20,7 @@ back to the physics baseline (distance / assumed speed).
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from sklearn.ensemble import GradientBoostingRegressor
@@ -33,9 +34,15 @@ logger = logging.getLogger("train_traffic.eta_forecast")
 CLASS_MAPPING = {"Express": 0, "Passenger": 1, "Freight": 2}
 PEAK_HOURS = {8, 9, 10, 17, 18, 19}
 
+CLASS_SPEED_RANGES: Dict[str, Tuple[float, float]] = {
+    "Express": (80.0, 115.0),
+    "Passenger": (60.0, 90.0),
+    "Freight": (35.0, 65.0),
+}
+
 # Global singleton model and evaluation cache
 _MODEL: Optional[GradientBoostingRegressor] = None
-_METRICS: Dict[str, float] = {}
+_METRICS: Dict[str, Any] = {}
 
 
 def generate_synthetic_dataset(
@@ -46,13 +53,13 @@ def generate_synthetic_dataset(
     Features:
     0: train_class (0: Express, 1: Passenger, 2: Freight)
     1: distance_km (1.0 to 20.0 km)
-    2: assumed_speed_kmh (30.0 to 120.0 km/h)
+    2: assumed_speed_kmh (realistic per-class speed inside training bounds)
     3: hour (6 to 22)
     4: peak_flag (1 if peak hour else 0)
     5: prior_delay_min (0.0 to 45.0 min)
 
     Target:
-    actual_time_s: Actual time to junction in seconds including non-linear
+    actual_time_s: Actual time to junction in seconds including synthetic
                    deceleration, signal caution aspects, and station congestion.
 
     Label Noise:
@@ -63,14 +70,14 @@ def generate_synthetic_dataset(
     train_classes = rng.choice([0, 1, 2], size=n_samples, p=[0.4, 0.35, 0.25])
     distances_km = rng.uniform(1.0, 20.0, size=n_samples)
 
-    # Base speeds dependent on train class
+    # Base speeds dependent on train class inside realistic training ranges
     base_speeds = np.where(
         train_classes == 0,
-        rng.uniform(80.0, 115.0, size=n_samples),  # Express
+        rng.uniform(80.0, 115.0, size=n_samples),  # Express: 80-115 km/h
         np.where(
             train_classes == 1,
-            rng.uniform(60.0, 90.0, size=n_samples),   # Passenger
-            rng.uniform(35.0, 65.0, size=n_samples),   # Freight
+            rng.uniform(60.0, 90.0, size=n_samples),   # Passenger: 60-90 km/h
+            rng.uniform(35.0, 65.0, size=n_samples),   # Freight: 35-65 km/h
         ),
     )
     speeds_kmh = np.clip(base_speeds + rng.normal(0, 4, size=n_samples), 25.0, 120.0)
@@ -83,7 +90,7 @@ def generate_synthetic_dataset(
     # Physics baseline: time = (distance / speed) * 3600 seconds
     baseline_time_s = (distances_km / speeds_kmh) * 3600.0
 
-    # Non-linear real-world delay effects:
+    # Non-linear synthetic planted delay effects:
     # 1. Approach deceleration penalty (heavier for freight)
     decel_penalty_s = np.where(
         train_classes == 2,
@@ -110,9 +117,13 @@ def generate_synthetic_dataset(
     return X, actual_time_s, baseline_time_s
 
 
-def get_or_train_model() -> Tuple[Optional[GradientBoostingRegressor], Dict[str, float]]:
+def get_or_train_model() -> Tuple[Optional[GradientBoostingRegressor], Dict[str, Any]]:
     """Initialize and train the Gradient Boosting Regressor singleton on synthetic data."""
     global _MODEL, _METRICS
+    if os.environ.get("FORCE_ETA_FAIL") == "1":
+        logger.warning("FORCE_ETA_FAIL is enabled; simulating model failure.")
+        return None, {"benchmark": "synthetic, planted effects", "fallback": True, "error": "Forced model failure"}
+
     if _MODEL is not None and _METRICS:
         return _MODEL, _METRICS
 
@@ -138,6 +149,7 @@ def get_or_train_model() -> Tuple[Optional[GradientBoostingRegressor], Dict[str,
 
         _MODEL = model
         _METRICS = {
+            "benchmark": "synthetic, planted effects",
             "baseline_mae_seconds": round(baseline_mae, 2),
             "ml_mae_seconds": round(ml_mae, 2),
             "mae_improvement_pct": round(((baseline_mae - ml_mae) / baseline_mae) * 100.0, 1),
@@ -151,7 +163,12 @@ def get_or_train_model() -> Tuple[Optional[GradientBoostingRegressor], Dict[str,
     except Exception as exc:
         logger.warning(f"Failed to train ETA model, activating baseline fallback: {exc}")
         _MODEL = None
-        _METRICS = {"baseline_mae_seconds": 0.0, "ml_mae_seconds": 0.0, "fallback": True}
+        _METRICS = {
+            "benchmark": "synthetic, planted effects",
+            "baseline_mae_seconds": 0.0,
+            "ml_mae_seconds": 0.0,
+            "fallback": True,
+        }
         return None, _METRICS
 
 
@@ -175,11 +192,21 @@ def get_eta_forecasts(state: Any = None) -> Dict[str, Any]:
         train_name = train["name"]
         train_type = train["type"]
 
-        # Derive assumed speed (km/h) from booked run time across approach block (BL1)
-        # speed = distance (km) / (run_min / 60)
+        # Derive raw speed from booked run time across approach block (BL1)
         run_min = float(train["run_min"].get(approach_block["id"], 6))
         raw_speed = (approach_dist_km / (run_min / 60.0))
-        assumed_speed_kmh = round(min(raw_speed, 110.0), 1)  # Capped at corridor max speed (110 km/h)
+
+        # Clamp to realistic training range for train class
+        min_speed, max_speed = CLASS_SPEED_RANGES.get(train_type, (60.0, 90.0))
+        clamped = False
+        if raw_speed < min_speed:
+            assumed_speed_kmh = round(min_speed, 1)
+            clamped = True
+        elif raw_speed > max_speed:
+            assumed_speed_kmh = round(max_speed, 1)
+            clamped = True
+        else:
+            assumed_speed_kmh = round(raw_speed, 1)
 
         hour = 10  # 10:00 AM simulation start horizon
         peak_flag = 1 if hour in PEAK_HOURS else 0
@@ -217,6 +244,7 @@ def get_eta_forecasts(state: Any = None) -> Dict[str, Any]:
             "type": train_type,
             "distance_to_junction_km": approach_dist_km,
             "assumed_speed_kmh": assumed_speed_kmh,
+            "clamped": clamped,
             "prior_delay_min": prior_delay,
             "baseline_eta_s": baseline_eta_s,
             "ml_eta_s": ml_eta_s,
