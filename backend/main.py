@@ -14,17 +14,38 @@ Endpoints
 ``POST /validate``    rule based safety validation of any plan
 ``GET  /results``     KPIs + validation + before/after comparison + advice
 ``POST /reset``       restore the booked baseline
+
+Physical junction hardware (ESP32):
+
+``GET  /hardware/contract``  the locked sensor / GPIO contract
+``GET  /hardware/status``    full hardware state + audit trail
+``POST /sensor-event``       receive one debounced ESP32 sensor event
+``GET  /block-state``        signal aspect per logical block (polled)
+``POST /sensor-event/reset`` reset junction hardware state (demo/test utility)
 """
 
 from __future__ import annotations
 
+import logging
 import os
-from typing import Any, Dict, List, Optional
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+import junction_adapter
+from hardware_state import (
+    EVENT_TYPES,
+    JUNCTION_TRAIN_MAP,
+    LOGICAL_BLOCK_IDS,
+    SENSOR_CONTRACT,
+    SENSOR_IDS,
+    contract_table,
+    get_hardware_state,
+)
 from optimizer import optimize_schedule, optimizer_summary
 from recommender import build_recommendation
 from simulator import (
@@ -99,6 +120,70 @@ class ResetRequest(BaseModel):
     clear_disruptions: bool = Field(
         default=True, description="false keeps the disturbances but drops the optimized plan"
     )
+
+
+# ---------------------------------------------------------------------------
+# Hardware request models (Phase B)
+# ---------------------------------------------------------------------------
+
+class SensorEventRequest(BaseModel):
+    """One ESP32 sensor event, validated against the locked hardware contract.
+
+    ``block_id`` carries the **sensor ID** (``A1``/``A2``/``B1``/``B2``), exactly as
+    specified by the contract.  The logical block (``A``/``B``) is derived from
+    :data:`hardware_state.SENSOR_CONTRACT`.
+    """
+
+    block_id: str = Field(description="Sensor ID: A1, A2, B1 or B2")
+    state: str = Field(description="'occupied' for A1/B1, 'free' for A2/B2")
+    event_type: str = Field(default="sensor_triggered", description="contract event type")
+    timestamp: int = Field(description="epoch milliseconds", gt=0)
+    source: str = Field(min_length=1, description="idempotency key, e.g. 'sensor_A1'")
+    seq: int = Field(ge=0, description="monotonically increasing per source")
+
+    @field_validator("block_id")
+    @classmethod
+    def _known_sensor(cls, value: str) -> str:
+        if value not in SENSOR_CONTRACT:
+            raise ValueError(
+                f"unknown sensor '{value}' (expected one of {', '.join(SENSOR_IDS)})"
+            )
+        return value
+
+    @field_validator("event_type")
+    @classmethod
+    def _known_event_type(cls, value: str) -> str:
+        if value not in EVENT_TYPES:
+            raise ValueError(
+                f"unknown event_type '{value}' (expected one of {', '.join(EVENT_TYPES)})"
+            )
+        return value
+
+    @field_validator("source")
+    @classmethod
+    def _non_empty_source(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("'source' must be a non-empty string")
+        return value
+
+    @model_validator(mode="after")
+    def _state_matches_sensor(self) -> "SensorEventRequest":
+        """A1/B1 may only report ``occupied``; A2/B2 may only report ``free``."""
+        expected = SENSOR_CONTRACT[self.block_id]["target_state"]
+        if self.state != expected:
+            raise ValueError(
+                f"sensor {self.block_id} must report state '{expected}', "
+                f"got '{self.state}'"
+            )
+        return self
+
+    @property
+    def logical_block(self) -> str:
+        return SENSOR_CONTRACT[self.block_id]["block_id"]
+
+    @property
+    def train_id(self) -> str:
+        return SENSOR_CONTRACT[self.block_id]["train_id"]
 
 
 #: Ready made disturbances used by the demo preset buttons in the UI.
@@ -321,6 +406,11 @@ def read_index() -> Dict[str, Any]:
             "POST /validate",
             "GET /results",
             "POST /reset",
+            "GET /hardware/contract",
+            "GET /hardware/status",
+            "POST /sensor-event",
+            "GET /block-state",
+            "POST /sensor-event/reset",
         ],
     }
 
@@ -428,6 +518,168 @@ def reset_simulation(request: Optional[ResetRequest] = None) -> Dict[str, Any]:
     )
 
 
+# ---------------------------------------------------------------------------
+# Hardware endpoints (Phases B / C / D)
+# ---------------------------------------------------------------------------
+
+logger = logging.getLogger("junction.hardware")
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _record_event(state_obj, sensor_id: str, **extra: Any) -> None:
+    """Append an entry to the bounded in-memory audit trail."""
+    state_obj.log_event({"at": _utc_now(), "sensor_id": sensor_id, **extra})
+
+
+def _recompute_decision(state_obj) -> Optional[Dict[str, Any]]:
+    """Re-evaluate the junction and store the result on the hardware state.
+
+    The optimizer is only invoked when the *occupancy signature* changes, so a
+    repeated or ignored event can never re-run the solver.
+    """
+    occupancy = dict(state_obj.occupancy)
+    occupied = tuple(b for b in LOGICAL_BLOCK_IDS if occupancy.get(b) == "occupied")
+    conflict_key = "|".join(occupied)
+
+    if conflict_key == state_obj._last_conflict_key:
+        return state_obj.decision
+
+    decision = junction_adapter.decide_junction(occupancy, dict(state_obj.arrival_times))
+    if len(occupied) >= 2:
+        state_obj.optimizer_calls += 1
+    state_obj.decision = decision
+    state_obj._last_conflict_key = conflict_key
+    return decision
+
+
+@app.get("/hardware/contract", summary="Locked sensor / GPIO contract")
+def read_hardware_contract() -> Dict[str, Any]:
+    """The hardware contract, served by the API so the ESP32 and the docs agree."""
+    return contract_table()
+
+
+@app.get("/hardware/status", summary="Full hardware state and audit trail")
+def read_hardware_status() -> Dict[str, Any]:
+    state_obj = get_hardware_state()
+    return {"state": state_obj.snapshot(), "events": list(state_obj.event_log)}
+
+
+@app.post("/sensor-event", summary="Receive one ESP32 sensor event")
+def post_sensor_event(request: SensorEventRequest) -> Dict[str, Any]:
+    """Ingest a sensor event: validate, de-duplicate, update state, decide.
+
+    A malformed payload never mutates state and never crashes the service (Pydantic
+    rejects it with 422 before this handler runs).
+    """
+    state_obj = get_hardware_state()
+    sensor_id = request.block_id
+    block_id = request.logical_block
+    source = request.source
+
+    with state_obj._lock:
+        last_seq = state_obj.last_accepted_seq.get(source)
+        if last_seq is not None and request.seq <= last_seq:
+            logger.info(
+                "hardware.duplicate source=%s seq=%s last_accepted_seq=%s sensor=%s",
+                source, request.seq, last_seq, sensor_id,
+            )
+            _record_event(
+                state_obj, sensor_id, status="ignored",
+                reason="duplicate_or_stale_seq", source=source, seq=request.seq,
+            )
+            return {
+                "status": "ignored",
+                "reason": "duplicate_or_stale_seq",
+                "sensor_id": sensor_id,
+                "block_id": block_id,
+                "seq": request.seq,
+                "last_accepted_seq": last_seq,
+                "optimizer_triggered": False,
+            }
+
+        current_state = state_obj.occupancy.get(block_id, "free")
+        if current_state == request.state:
+            # New seq, but logically redundant: no transition would occur.
+            # Documented decision (hardware_contract.md section 3.2): the seq IS
+            # recorded, so a later replay of it is ignored too.
+            state_obj.last_accepted_seq[source] = request.seq
+            state_obj.last_event_received_at = time.time()
+            state_obj.last_event = request.model_dump()
+            logger.info(
+                "hardware.state_redundant source=%s seq=%s sensor=%s current_state=%s",
+                source, request.seq, sensor_id, current_state,
+            )
+            _record_event(
+                state_obj, sensor_id, status="ignored", reason="state_redundant",
+                source=source, seq=request.seq, current_state=current_state,
+            )
+            return {
+                "status": "ignored",
+                "reason": "state_redundant",
+                "sensor_id": sensor_id,
+                "block_id": block_id,
+                "seq": request.seq,
+                "current_state": current_state,
+                "optimizer_triggered": False,
+            }
+
+        # -- the event is accepted -----------------------------------------
+        state_obj.occupancy[block_id] = request.state
+        state_obj.last_accepted_seq[source] = request.seq
+        state_obj.last_event_received_at = time.time()
+        state_obj.last_event = request.model_dump()
+        if request.state == "occupied":
+            state_obj.arrival_times[block_id] = float(request.timestamp)
+        else:
+            state_obj.arrival_times.pop(block_id, None)
+
+        logger.info(
+            "hardware.accepted source=%s seq=%s sensor=%s block=%s train=%s state=%s",
+            source, request.seq, sensor_id, block_id, request.train_id, request.state,
+        )
+        _record_event(
+            state_obj, sensor_id, status="accepted", source=source, seq=request.seq,
+            block_id=block_id, train_id=request.train_id, state=request.state,
+        )
+
+        decision = _recompute_decision(state_obj)
+
+    return {
+        "status": "accepted",
+        "sensor_id": sensor_id,
+        "block_id": block_id,
+        "train_id": request.train_id,
+        "state": request.state,
+        "seq": request.seq,
+        "optimizer_triggered": bool(decision and decision.get("conflict")),
+        "decision": decision,
+    }
+
+
+@app.post("/sensor-event/reset", summary="Reset junction hardware state (demo/test utility)")
+def reset_hardware_state() -> Dict[str, Any]:
+    """Clear occupancy, seq counters, decision and event log.
+
+    Demo / rehearsal / test utility only.  Unauthenticated by design; never expose
+    it outside a controlled prototype network.
+    """
+    state_obj = get_hardware_state()
+    state_obj.reset()
+    junction_adapter.reset_run_counter()
+    logger.info("hardware.reset requested")
+    return {
+        "status": "reset",
+        "message": (
+            "Junction hardware state cleared (occupancy, seq counters, decision, "
+            "event log). Demo/test utility."
+        ),
+        "state": state_obj.snapshot(),
+    }
+
+
 if __name__ == "__main__":  # pragma: no cover - manual launch helper
     import uvicorn
 
@@ -438,4 +690,56 @@ if __name__ == "__main__":  # pragma: no cover - manual launch helper
     print(f" API  : http://{host}:{port}   docs: http://{host}:{port}/docs")
     print(" Safety: advisory only - never use this for real train movements.")
     print("=" * 78)
+
+@app.get("/block-state", summary="Current signal aspect per logical block")
+def read_block_state() -> Dict[str, Any]:
+    """Signal aspect for blocks A and B, polled by the ESP32 every 1-2 seconds."""
+    state_obj = get_hardware_state()
+    decision = state_obj.decision
+    stale = state_obj.is_stale()
+    occupied = set(state_obj.occupied_blocks())
+
+    blocks: List[Dict[str, str]] = []
+    for block_id in LOGICAL_BLOCK_IDS:
+        if decision and decision.get("conflict"):
+            signal = "PROCEED" if block_id in decision.get("proceed", []) else "HOLD"
+        else:
+            # No conflict: the detected train may proceed, idle approaches are clear.
+            signal = "PROCEED"
+        blocks.append({"block_id": block_id, "signal": signal})
+
+    if state_obj.last_event_received_at is None:
+        reason = "No hardware data yet - signals are advisory defaults, not a clearance."
+    elif stale:
+        reason = (
+            "Hardware data is stale (no event for more than "
+            f"{state_obj.snapshot()['stale_threshold_s']} s); the last known aspect "
+            "is being repeated."
+        )
+    elif decision and decision.get("conflict"):
+        reason = decision["reason"]
+    elif occupied:
+        only = sorted(occupied)[0]
+        reason = (
+            f"{JUNCTION_TRAIN_MAP[only]} is approaching the junction on block {only} "
+            "and no other train is detected, so it may proceed."
+        )
+    else:
+        reason = "Junction is clear - both approaches are free."
+
+    payload: Dict[str, Any] = {
+        "blocks": blocks,
+        "reason": reason,
+        "timestamp": _utc_now(),
+        "stale": stale,
+    }
+    if decision:
+        payload["decision"] = {
+            "source": decision.get("decision_source"),
+            "run_id": decision.get("run_id"),
+            "conflict": decision.get("conflict"),
+        }
+    return payload
+
+
     uvicorn.run(app, host=host, port=port, log_level="info")
