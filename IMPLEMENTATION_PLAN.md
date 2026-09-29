@@ -72,20 +72,28 @@ To ensure rock-solid stability before the final round, the implementation is div
 * **Objective:** Execute the core demonstration scenario proving the concrete value of CP-SAT optimization.
 
 #### Benchmark Scenario Setup
-* **Train A (Freight / Low Priority):** Triggers `A1` first.
-* **Train B (Express / High Priority):** Triggers `B1` $3\text{ seconds}$ later, before `A2` clears.
+* **Train B (T204 Intercity Passenger / Weight 2):** Triggers `B1` first at $t=0$.
+* **Train A (T101 Rajdhani Express / Weight 3):** Triggers `A1` shortly after, before `B2` clears.
 
 #### Comparison Matrix
 ```
 +------------------------------------+------------------------------------+
 |   Legacy Local Rule (FCFS/FIFO)    |      AI Decision Engine (CP-SAT)   |
 +------------------------------------+------------------------------------+
-| 1. Freight (A) proceeds first.     | 1. Express (B) prioritized.        |
-| 2. Express (B) held for full run.  | 2. Freight (A) briefly held.       |
+| 1. Passenger (B) proceeds first.   | 1. Express (A) prioritized.        |
+| 2. Express (A) held for full run.  | 2. Passenger (B) briefly held.     |
 | 3. High passenger delay penalty.   | 3. Total weighted delay minimized. |
-| Result: +15 min passenger delay    | Result: -68% weighted delay delta  |
+| Result: +9 min express delay       | Result: -41% weighted delay delta  |
 +------------------------------------+------------------------------------+
 ```
+
+#### Demo Cases (Verified Decision Boundaries)
+* **Gap 2 s ($t_B=0, t_A=+2\text{s}$):** CP-SAT **16000** vs FCFS **27000** $\rightarrow$ Express (A) proceeds first, Passenger (B) held.
+* **Gap 2 min ($t_B=0, t_A=+2\text{ min}$):** CP-SAT **20000** vs FCFS **21000** $\rightarrow$ Express (A) proceeds first, Passenger (B) held.
+* **Gap 3 min ($t_B=0, t_A=+3\text{ min}$):** CP-SAT **18000** vs FCFS **18000** $\rightarrow$ Passenger (B) proceeds first, Express (A) held.
+* **Gap 5 min ($t_B=0, t_A=+5\text{ min}$):** CP-SAT **12000** vs FCFS **12000** $\rightarrow$ Passenger (B) proceeds first, Express (A) held.
+
+> **Note on Evaluation:** FCFS values are hand-computed from the same objective cost model ($w_A \cdot d_A \cdot 1000 + w_B \cdot d_B \cdot 1000$). Dynamic arrival times are rounded to whole minutes in `simulator.py`, so arrival gaps under $\sim 30\text{ seconds}$ evaluate as simultaneous ready times ($ready_A=0, ready_B=0$).
 
 * **Done When:** Side-by-side KPI cards and timetable deltas display live on screen with zero simulated or fake metrics.
 

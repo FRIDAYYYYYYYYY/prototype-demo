@@ -40,7 +40,7 @@ The prototype is built upon a verified, modular foundation with **10/10 end-to-e
 ```
 
 #### Core Components & File Responsibilities
-* [**`backend/simulator.py`**](file:///c:/Users/Sri/OneDrive/Desktop/friday_traintraffic/prototype-demo/backend/simulator.py): Single-corridor railway simulation ($47\text{ km}$, 4 stations, 3 track blocks), fleet configurations (T101 Express, T204 Regional, F801 Freight, T312 Intercity), dwell times, and delay propagation logic.
+* [**`backend/simulator.py`**](file:///c:/Users/Sri/OneDrive/Desktop/friday_traintraffic/prototype-demo/backend/simulator.py): Single-corridor railway simulation ($47\text{ km}$, 4 stations, 3 track blocks), fleet configurations (T101 Rajdhani Express, T204 Intercity Passenger, T305 Coal Freight 305, T408 Superfast Express), dwell times, and delay propagation logic.
 * [**`backend/optimizer.py`**](file:///c:/Users/Sri/OneDrive/Desktop/friday_traintraffic/prototype-demo/backend/optimizer.py): Constraint Programming solver utilizing Google OR-Tools CP-SAT. Formulates `AddNoOverlap` block occupancy, headway safety windows ($3\text{ min}$), station dwell bounds ($1\text{ to }90\text{ min}$), and passenger delay objective functions.
 * [**`backend/validator.py`**](file:///c:/Users/Sri/OneDrive/Desktop/friday_traintraffic/prototype-demo/backend/validator.py): Independent safety validation engine checking minimum headway violations, platform capacity overflows, and track possession violations.
 * [**`backend/recommender.py`**](file:///c:/Users/Sri/OneDrive/Desktop/friday_traintraffic/prototype-demo/backend/recommender.py): Synthesizes schedule deltas into explainable dispatcher advice.
