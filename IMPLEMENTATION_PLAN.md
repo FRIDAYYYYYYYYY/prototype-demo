@@ -83,7 +83,7 @@ To ensure rock-solid stability before the final round, the implementation is div
 | 1. Passenger (B) proceeds first.   | 1. Express (A) prioritized.        |
 | 2. Express (A) held for full run.  | 2. Passenger (B) briefly held.     |
 | 3. High passenger delay penalty.   | 3. Total weighted delay minimized. |
-| Result: +9 min express delay       | Result: -41% weighted delay delta  |
+| Result: +9 min express delay       | Result: -41% weighted delay delta (2 s case; FCFS hand-computed from the same cost model) |
 +------------------------------------+------------------------------------+
 ```
 
@@ -101,7 +101,7 @@ To ensure rock-solid stability before the final round, the implementation is div
 
 ### Phase 5.5 — Rehearsal, Stress-Testing & Fallback Recording
 
-* **Objective:** Guarantee 100% demo resilience against live network drops or physical glitches.
+* **Objective:** Ensure demo continuity with recorded fallback video and curl replay prepared against live network drops or physical glitches.
 * **Tasks:**
   1. Rehearse full end-to-end demo 3 consecutive times with hardware connected.
   2. Screen-record a high-definition backup video of the live physical board and React UI in sync.
