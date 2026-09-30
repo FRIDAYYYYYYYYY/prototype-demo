@@ -35,8 +35,8 @@
   flex-direction: column;
   gap: var(--gap-lg);
   padding: var(--gap-lg) var(--gap-md);
-  background: var(--bg);
-  border-right: 1px solid var(--line);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-line);
   z-index: 40;
 }
 
@@ -45,7 +45,7 @@
   align-items: center;
   gap: var(--gap-sm);
   padding-bottom: var(--gap-md);
-  border-bottom: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--sidebar-line);
 }
 
 .brandmark {
@@ -69,12 +69,12 @@
 .brandtext strong {
   font-size: 14.5px;
   font-weight: 600;
-  color: var(--text-strong);
+  color: var(--sidebar-text);
   letter-spacing: -0.015em;
 }
 .brandtext small {
   font-size: 11px;
-  color: var(--text-mute);
+  color: var(--sidebar-mute);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-weight: 500;
@@ -83,13 +83,13 @@
 .sidebar__close {
   display: none;
   margin-left: auto;
-  color: var(--text-dim);
+  color: var(--sidebar-mute);
   padding: var(--gap-xs);
   border-radius: var(--r-sm);
   transition: background var(--t-fast) var(--ease-standard);
 }
 .sidebar__close:hover {
-  background: var(--surface-3);
+  background: var(--sidebar-hover);
 }
 
 .sidebar__nav {
@@ -103,7 +103,7 @@
   font-size: 10.5px;
   letter-spacing: 0.01em;
   text-transform: none;
-  color: var(--text-mute);
+  color: var(--sidebar-mute);
   padding-left: 12px;
   font-weight: 600;
 }
@@ -125,17 +125,33 @@
   gap: 11px;
   padding: 10px 12px;
   border-radius: var(--r-md);
-  color: var(--text-dim);
+  color: var(--sidebar-mute);
   font-weight: 500;
+  /* Nav items are real <a> elements now, so the button resets and the
+     underline removal have to be explicit. */
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  background: none;
+  border: 0;
+  cursor: pointer;
   transition:
     color var(--t-fast) var(--ease-standard),
     background var(--t-fast) var(--ease-standard),
     transform var(--t-fast) var(--ease-standard);
 }
 
+/* Keyboard focus needs a visible ring on the sidebar, whose background is
+   dark enough that the default outline can be easy to lose. */
+.navitem:focus-visible {
+  outline: 2px solid var(--sidebar-active-text);
+  outline-offset: 2px;
+}
+
 .navitem:hover {
-  color: var(--text-strong);
-  background: var(--surface-3);
+  color: var(--sidebar-text);
+  background: var(--sidebar-hover);
   transform: translateX(2px);
 }
 
@@ -146,14 +162,14 @@
   height: 30px;
   flex-shrink: 0;
   border-radius: 9px;
-  color: var(--text-mute);
-  background: var(--surface-3);
+  color: var(--sidebar-mute);
+  background: var(--sidebar-icon-bg);
   transition:
     background var(--t-fast) var(--ease-standard),
     color var(--t-fast) var(--ease-standard);
 }
 .navitem:hover .navitem__icon {
-  color: var(--text-dim);
+  color: var(--sidebar-text);
 }
 
 .navitem__label {
@@ -175,12 +191,12 @@
 }
 
 .navitem.is-active {
-  color: var(--text-strong);
-  background: var(--primary-softer);
+  color: var(--sidebar-active-text);
+  background: var(--sidebar-active-bg);
 }
 .navitem.is-active .navitem__icon {
-  color: var(--primary);
-  background: var(--primary-soft);
+  color: var(--sidebar-active-text);
+  background: var(--sidebar-icon-active-bg);
 }
 .navitem.is-active .navitem__rail {
   height: 24px;
@@ -221,8 +237,7 @@
   min-width: 0;
 }
 
-.topbar__corridor,
-.topbar__conflict {
+.topbar__corridor {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -233,18 +248,6 @@
 }
 .topbar__corridor svg {
   color: var(--secondary);
-}
-.topbar__conflict code {
-  color: var(--text-strong);
-  background: var(--surface-3);
-  padding: 1px 6px;
-  border-radius: 6px;
-}
-
-.topbar__divider {
-  width: 1px;
-  height: 16px;
-  background: var(--line-strong);
 }
 
 /* Spotlight-style search trigger */
@@ -333,12 +336,12 @@
   box-shadow: var(--shadow-sm);
   display: grid;
   place-items: center;
-  color: var(--primary);
+  color: var(--primary-ink);
   transition: transform var(--t-base) var(--ease-spring);
 }
 [data-theme='dark'] .themetoggle__thumb {
   transform: translateX(28px);
-  color: var(--warn);
+  color: var(--warn-ink);
 }
 .themetoggle__icons {
   display: flex;
@@ -398,6 +401,9 @@
 .section__title {
   font-size: clamp(1.2rem, 1.8vw, 1.5rem);
   font-weight: 650;
+  /* Routed pages focus this heading after navigation, which would otherwise
+     draw the default focus ring around the page title. */
+  outline: none;
 }
 
 .section__subtitle {
@@ -406,8 +412,28 @@
   line-height: 1.6;
 }
 
+/* ---------- 404 page ---------- */
+
+.notfound__link {
+  display: inline-block;
+  margin-top: var(--gap-md);
+  padding: 9px 16px;
+  border-radius: var(--r-md);
+  color: var(--on-primary);
+  background: var(--primary);
+  font-weight: 600;
+  font-size: 14px;
+  transition: background var(--t-fast) var(--ease-standard);
+}
+.notfound__link:hover {
+  background: var(--primary-strong);
+}
+.notfound__link:focus-visible {
+  outline: 2px solid var(--primary-ink);
+  outline-offset: 2px;
+}
+
 .section__tag {
-  font-size: 12px;
   color: var(--text-dim);
   padding: 6px 12px;
   border-radius: var(--r-pill);
@@ -499,7 +525,7 @@
   flex-shrink: 0;
 }
 .palette__item.is-active svg {
-  color: var(--primary);
+  color: var(--primary-ink);
 }
 .palette__item b {
   font-size: 14px;
@@ -568,7 +594,7 @@
 }
 .sidebar__safety svg {
   flex-shrink: 0;
-  color: var(--warn);
+  color: var(--warn-ink);
   margin-top: 1px;
 }
 

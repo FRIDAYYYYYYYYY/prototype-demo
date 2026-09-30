@@ -10,7 +10,16 @@ export function Card({ className = '', children, ...rest }) {
   )
 }
 
-export function Section({ id, eyebrow, title, subtitle, icon, aside, children }) {
+/**
+ * Page-level section wrapper.
+ *
+ * `level` is 'h1' on a routed page (each page is its own document now, so it
+ * needs its own top-level heading) and 'h2' when nested inside another page.
+ * The heading carries `data-page-title` so the router can move focus to it after
+ * a client-side navigation.
+ */
+export function Section({ id, eyebrow, title, subtitle, icon, aside, level = 'h2', children }) {
+  const Heading = level
   return (
     <section id={id} className="section">
       <header className="section__head">
@@ -21,7 +30,9 @@ export function Section({ id, eyebrow, title, subtitle, icon, aside, children })
               {eyebrow}
             </span>
           )}
-          <h2 className="section__title">{title}</h2>
+          <Heading className="section__title" data-page-title tabIndex={-1}>
+            {title}
+          </Heading>
           {subtitle && <p className="section__subtitle">{subtitle}</p>}
         </div>
         {aside && <div className="section__aside">{aside}</div>}

@@ -56,7 +56,7 @@ p {
 }
 
 a {
-  color: var(--primary);
+  color: var(--primary-ink);
   text-decoration: none;
 }
 

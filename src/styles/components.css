@@ -3,7 +3,9 @@
    ============================================================ */
 
 /* Tone system - one class drives colour everywhere.
-   Kept intentionally narrow: primary, secondary, status, neutral. */
+   Kept intentionally narrow: primary, secondary, status, neutral.
+   Each tone exposes an -ink companion: --tone paints fills and marks,
+   --tone-ink paints text so labels stay legible on light surfaces. */
 .tone-primary,
 .tone-teal,
 .tone-indigo,
@@ -11,33 +13,39 @@
 .tone-blue,
 .tone-emerald {
   --tone: var(--primary);
+  --tone-ink: var(--primary-ink);
   --tone-soft: var(--primary-soft);
   --tone-line: var(--primary-line);
 }
 .tone-secondary,
 .tone-violet {
   --tone: var(--secondary);
+  --tone-ink: var(--secondary-strong);
   --tone-soft: var(--secondary-soft);
   --tone-line: var(--secondary-line);
 }
 .tone-success {
   --tone: var(--success);
+  --tone-ink: var(--success-ink);
   --tone-soft: var(--success-soft);
   --tone-line: var(--success-line);
 }
 .tone-warn {
   --tone: var(--warn);
+  --tone-ink: var(--warn-ink);
   --tone-soft: var(--warn-soft);
   --tone-line: var(--warn-line);
 }
 .tone-danger {
   --tone: var(--danger);
+  --tone-ink: var(--danger-ink);
   --tone-soft: var(--danger-soft);
   --tone-line: var(--danger-line);
 }
 .tone-muted,
 .tone-slate {
   --tone: var(--muted);
+  --tone-ink: var(--muted);
   --tone-soft: var(--muted-soft);
   --tone-line: var(--line);
 }
@@ -90,7 +98,7 @@
   height: 30px;
   flex-shrink: 0;
   border-radius: var(--r-sm);
-  color: var(--tone, var(--primary));
+  color: var(--tone-ink, var(--primary-ink));
   background: var(--tone-soft, var(--primary-soft));
   border: 1px solid var(--tone-line, var(--primary-line));
 }
@@ -122,7 +130,7 @@
   font-weight: 500;
   padding: 2px 8px;
   border-radius: var(--r-sm);
-  color: var(--tone, var(--text-dim));
+  color: var(--tone-ink, var(--text-dim));
   background: var(--tone-soft, var(--muted-soft));
   border: 1px solid var(--tone-line, var(--line));
   white-space: nowrap;
@@ -178,7 +186,7 @@
 .btn--primary {
   color: var(--on-primary);
   background: var(--primary);
-  border-color: var(--primary);
+  border-color: var(--primary-ink);
 }
 .btn--primary:hover {
   background: var(--primary-strong);
@@ -276,7 +284,7 @@
 .stat__value {
   font-size: 16px;
   font-weight: 600;
-  color: var(--tone, var(--primary));
+  color: var(--tone-ink, var(--primary-ink));
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }

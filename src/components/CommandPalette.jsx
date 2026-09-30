@@ -12,8 +12,11 @@ const SECTION_META = {
 }
 
 /**
- * Spotlight-style command palette (Cmd/Ctrl + K) for jumping between sections.
+ * Spotlight-style command palette (Cmd/Ctrl + K) for jumping between pages.
  * Full keyboard support: arrows to move, Enter to select, Esc to close.
+ *
+ * `onNavigate` is the shell's `jump`, which takes a section id and resolves it
+ * to a route, so the palette stays decoupled from the router.
  */
 export default function CommandPalette({ open, onClose, onNavigate }) {
   const [query, setQuery] = useState('')
@@ -67,7 +70,7 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
   if (!open) return null
 
   return (
-    <div className="palette" onClick={onClose} role="dialog" aria-modal="true" aria-label="Jump to section">
+    <div className="palette" onClick={onClose} role="dialog" aria-modal="true" aria-label="Jump to page">
       {/* Stop the click from bubbling to the backdrop when interacting with the sheet */}
       <div className="palette__sheet" onClick={(e) => e.stopPropagation()}>
         <div className="palette__search">
@@ -80,8 +83,8 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
               setCursor(0)
             }}
             onKeyDown={onKeyDown}
-            placeholder="Jump to a section…"
-            aria-label="Search sections"
+            placeholder="Jump to a page…"
+            aria-label="Search pages"
           />
           <kbd>Esc</kbd>
         </div>
@@ -104,7 +107,7 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
             ))}
           </ul>
         ) : (
-          <p className="palette__empty">No section matches “{query}”.</p>
+          <p className="palette__empty">No page matches “{query}”.</p>
         )}
 
         <div className="palette__foot">

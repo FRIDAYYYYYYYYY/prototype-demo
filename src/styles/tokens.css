@@ -7,14 +7,21 @@
    ============================================================ */
 
 :root {
-  /* ---------- Brand (used sparingly: primary actions only) ---------- */
-  --primary: #1a56db;
-  --primary-strong: #1e429f;
-  --primary-soft: #eff4ff;
-  --primary-softer: #f5f8ff;
-  --primary-line: #c3d3f7;
-  --on-primary: #ffffff;
+  /* ---------- Brand (used sparingly: primary actions only) ----------
+     "Sleek Transit" palette: Electric Cyan is the single active accent. */
+  --primary: #0ea5e9;
+  --primary-strong: #0369a1;
+  --primary-soft: #e0f2fe;
+  --primary-softer: #f0f9ff;
+  --primary-line: #bae6fd;
+  /* Text-safe deep cyan. Electric Cyan itself is 2.77:1 on white, so it is
+     used for fills/indicators only; all coloured text uses this ink. */
+  --primary-ink: #0369a1;
+  /* Slate on the cyan fill is 6.44:1 - white would only reach 2.77:1. */
+  --on-primary: #0f172a;
 
+  /* Secondary stays a deep teal so the two junction trains remain
+     distinguishable from the cyan accent. */
   --secondary: #0f766e;
   --secondary-strong: #115e59;
   --secondary-soft: #f0fdfa;
@@ -22,59 +29,83 @@
   --secondary-line: #b7e0db;
   --on-secondary: #ffffff;
 
-  /* ---------- Surfaces: white and neutral greys ---------- */
-  --bg: #ffffff;
-  --bg-deep: #f7f8fa;
+  /* ---------- Surfaces: cloud-grey canvas, crisp white cards ---------- */
+  --bg: #f8fafc;
+  --bg-deep: #f1f5f9;
   --surface: #ffffff;
-  --surface-2: #fafbfc;
-  --surface-3: #f4f5f7;
-  --surface-sunken: #f0f1f4;
+  --surface-2: #f8fafc;
+  --surface-3: #f1f5f9;
+  --surface-sunken: #e2e8f0;
   --glass: rgba(255, 255, 255, 0.92);
   --glass-2: rgba(255, 255, 255, 0.96);
-  --overlay: rgba(17, 24, 39, 0.4);
+  --overlay: rgba(15, 23, 42, 0.45);
+
+  /* ---------- Sidebar: Midnight Slate, in both themes ---------- */
+  --sidebar-bg: #0f172a;
+  --sidebar-line: #1e293b;
+  --sidebar-text: #f8fafc;
+  /* The spec's Cool Gray (#64748b) only reaches 3.75:1 on Midnight Slate, so
+     inactive links use a lifted slate that keeps the same cool hue at 6.96:1.
+     #64748b still applies to secondary text on the light canvas. */
+  --sidebar-mute: #94a3b8;
+  --sidebar-hover: rgba(255, 255, 255, 0.07);
+  --sidebar-icon-bg: rgba(255, 255, 255, 0.07);
+  --sidebar-active-text: #0ea5e9;
+  --sidebar-active-bg: rgba(14, 165, 233, 0.16);
+  --sidebar-icon-active-bg: rgba(14, 165, 233, 0.2);
 
   /* ---------- Lines: crisp 1px borders do the structural work ---------- */
-  --line: #e3e5e9;
-  --line-strong: #cfd3da;
-  --line-soft: #eef0f2;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --line-soft: #f1f5f9;
 
-  /* ---------- Text: near-black to grey ---------- */
-  --text: #1f2328;
-  --text-strong: #0a0d12;
-  --text-dim: #4a5159;
-  --text-mute: #6e7681;
+  /* ---------- Text: slate dark for headings, cool grey for secondary ---------- */
+  --text: #0f172a;
+  --text-strong: #0f172a;
+  --text-dim: #475569;
+  --text-mute: #64748b;
   --on-surface: #ffffff;
 
-  /* ---------- Semantic status: muted, legible ---------- */
-  --success: #157347;
-  --success-soft: #eaf6ef;
-  --success-line: #bcdfc9;
+  /* ---------- Status: mint / warm orange / soft crimson ----------
+     The hexes above are the fill/indicator colours. The -ink variants sit
+     one step darker purely so status text clears WCAG AA on a white card. */
+  --success: #059669;
+  --success-soft: #ecfdf5;
+  --success-line: #a7f3d0;
+  --success-ink: #047857;
+  --success-softer: #f5fdf9;
 
-  --warn: #8a5200;
-  --warn-soft: #fdf3e6;
-  --warn-line: #edd3ab;
+  --warn: #d97706;
+  --warn-soft: #fffbeb;
+  --warn-line: #fde68a;
+  --warn-ink: #b45309;
 
-  --danger: #b42318;
-  --danger-soft: #fdefee;
-  --danger-line: #f2c4c0;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --danger-line: #fecaca;
+  --danger-ink: #b91c1c;
 
-  --muted: #6e7681;
-  --muted-soft: #f2f3f5;
+  --muted: #64748b;
+  --muted-soft: #f1f5f9;
 
-  /* ---------- Chart series: readable, print-safe ---------- */
-  --series-a: #1a56db; /* CP-SAT / optimised */
-  --series-b: #9aa1ab; /* Legacy baseline */
-  --series-c: #0f766e;
-  --series-d: #5b21b6;
-  --series-e: #8a5200;
-  --series-f: #0e6f8a;
+  /* ---------- Chart series: readable, print-safe ----------
+     series-a is the CP-SAT / primary line, so it carries the Electric Cyan. */
+  --series-a: #0ea5e9; /* CP-SAT / optimised */
+  --series-b: #94a3b8; /* Legacy baseline */
+  --series-c: #059669;
+  --series-d: #0369a1;
+  --series-e: #d97706;
+  --series-f: #0f766e;
 
   /* ---------- Diagram (SVG corridor) ---------- */
-  --track-a: #d7dae0;
-  --track-b: #e9ebef;
-  --svg-surface: #fafbfc;
-  --svg-idle: rgba(17, 24, 39, 0.04);
-  --svg-idle-line: rgba(17, 24, 39, 0.14);
+  /* Warm lamp glow for headlights. Deliberately outside the UI palette:
+     it reads as emitted light rather than a branded surface. */
+  --lamp-glow: #fffdf0;
+  --track-a: #cbd5e1;
+  --track-b: #e2e8f0;
+  --svg-surface: #f8fafc;
+  --svg-idle: rgba(15, 23, 42, 0.04);
+  --svg-idle-line: rgba(15, 23, 42, 0.14);
 
   /* ---------- Gradients: solid fills only, kept for compatibility ---------- */
   --grad-primary: var(--primary);
@@ -88,8 +119,8 @@
   --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 6px 16px rgba(0, 0, 0, 0.08), 0 12px 28px rgba(0, 0, 0, 0.06);
   --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.12), 0 24px 56px rgba(0, 0, 0, 0.1);
-  --ring: 0 0 0 3px rgba(26, 86, 219, 0.22);
-  --ring-danger: 0 0 0 3px rgba(180, 35, 24, 0.2);
+  --ring: 0 0 0 3px rgba(14, 165, 233, 0.22);
+  --ring-danger: 0 0 0 3px rgba(220, 38, 38, 0.2);
 
   /* ---------- Radii: small and consistent ---------- */
   --r-xs: 4px;
@@ -146,6 +177,9 @@
   --primary-softer: rgba(107, 155, 255, 0.07);
   --primary-line: rgba(107, 155, 255, 0.32);
   --on-primary: #0a0d12;
+  /* On a dark card the accent is already light enough to read, so the ink
+     tokens track the accent rather than darkening it. */
+  --primary-ink: #9dbcff;
 
   --secondary: #4bb8ae;
   --secondary-strong: #6fd0c6;
@@ -177,14 +211,17 @@
   --success: #55c08a;
   --success-soft: rgba(85, 192, 138, 0.14);
   --success-line: rgba(85, 192, 138, 0.3);
+  --success-ink: #6fd3a3;
 
   --warn: #e0a458;
   --warn-soft: rgba(224, 164, 88, 0.14);
   --warn-line: rgba(224, 164, 88, 0.3);
+  --warn-ink: #e8b877;
 
   --danger: #f08a80;
   --danger-soft: rgba(240, 138, 128, 0.14);
   --danger-line: rgba(240, 138, 128, 0.3);
+  --danger-ink: #f4a49b;
 
   --muted: #8b929c;
   --muted-soft: rgba(139, 146, 156, 0.14);
@@ -196,11 +233,24 @@
   --series-e: #e0a458;
   --series-f: #38b6d4;
 
+  --lamp-glow: #fffdf0;
   --track-a: #30353c;
   --track-b: #3c424a;
   --svg-surface: #111418;
   --svg-idle: rgba(255, 255, 255, 0.04);
   --svg-idle-line: rgba(255, 255, 255, 0.14);
+
+  /* Sidebar tokens re-declared so the dark theme renders exactly as before -
+     the Midnight Slate sidebar is a light-theme treatment only. */
+  --sidebar-bg: #0b0d11;
+  --sidebar-line: #292d33;
+  --sidebar-text: #ffffff;
+  --sidebar-mute: #b3b9c2;
+  --sidebar-hover: rgba(255, 255, 255, 0.04);
+  --sidebar-icon-bg: rgba(255, 255, 255, 0.04);
+  --sidebar-active-text: #ffffff;
+  --sidebar-active-bg: rgba(107, 155, 255, 0.07);
+  --sidebar-icon-active-bg: rgba(107, 155, 255, 0.14);
 
   --shadow-sm: 0 5px 16px rgba(0, 0, 0, 0.24), 0 1px 0 rgba(255, 255, 255, 0.025) inset;
   --shadow-md: 0 8px 22px rgba(0, 0, 0, 0.32), 0 1px 0 rgba(255, 255, 255, 0.04) inset;

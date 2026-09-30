@@ -20,7 +20,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from main import app  # noqa: E402
 from recommender import CLEAN_SUMMARY  # noqa: E402
-from simulator import BOOKED_ORDER  # noqa: E402
+from simulator import BOOKED_ORDER, get_state  # noqa: E402
 
 client = TestClient(app)
 
@@ -203,6 +203,226 @@ def test_reset_restores_the_booked_timetable():
     assert payload["state"]["simulation"]["is_optimized"] is False
     assert payload["results"]["kpis"]["total_delay_min"] == 0
     assert payload["results"]["kpis"]["conflicts"] == 0
+
+
+def reset_hardware() -> None:
+    """Clear the junction hardware state.
+
+    ``/reset`` restores the corridor timetable; the junction has its own state
+    (occupancy, per-source ``seq`` counters, decision, event log) and its own
+    reset endpoint.  Hardware tests must call both.
+    """
+    response = client.post("/sensor-event/reset")
+    assert response.status_code == 200, response.text
+
+
+def sensor_event(block_id: str, state: str, seq: int, timestamp: int) -> dict:
+    """POST one sensor event exactly as the ESP32 firmware would."""
+    response = client.post(
+        "/sensor-event",
+        json={
+            "block_id": block_id,
+            "state": state,
+            "event_type": "sensor_triggered",
+            "timestamp": timestamp,
+            "source": f"sensor_{block_id}",
+            "seq": seq,
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def aspects() -> dict:
+    """Current signal aspect per logical block, keyed by block id."""
+    payload = client.get("/block-state").json()
+    return {block["block_id"]: block["signal"] for block in payload["blocks"]}
+
+
+#: Physical junction A is the freight (T305), B is the express (T101).
+#: See backend/hardware_state.py JUNCTION_TRAIN_MAP and docs/hardware_contract.md.
+JUNCTION_TRAINS = {"A": "T305", "B": "T101"}
+
+
+def test_hardware_seq_a_only():
+    reset()
+    reset_hardware()
+    # A1: the freight approaches on the clear junction.
+    p1 = sensor_event("A1", "occupied", 1, 1732500000000)
+    assert p1["status"] == "accepted"
+    assert p1["block_id"] == "A"
+    assert p1["train_id"] == JUNCTION_TRAINS["A"]
+    # No conflict, so nothing is held and the optimizer is not invoked.
+    assert p1["optimizer_triggered"] is False
+    assert aspects() == {"A": "PROCEED", "B": "PROCEED"}
+
+    # A2: the freight cleared the junction.
+    p2 = sensor_event("A2", "free", 1, 1732500005000)
+    assert p2["status"] == "accepted"
+    assert aspects() == {"A": "PROCEED", "B": "PROCEED"}
+    assert client.get("/block-state").json()["reason"] == (
+        "Junction is clear - both approaches are free."
+    )
+
+
+def test_hardware_seq_b_only():
+    reset()
+    reset_hardware()
+    # B1: the express approaches on the clear junction.
+    p1 = sensor_event("B1", "occupied", 1, 1732500000000)
+    assert p1["status"] == "accepted"
+    assert p1["block_id"] == "B"
+    assert p1["train_id"] == JUNCTION_TRAINS["B"]
+    assert p1["optimizer_triggered"] is False
+    assert aspects() == {"A": "PROCEED", "B": "PROCEED"}
+
+    # B2: the express cleared the junction.
+    p2 = sensor_event("B2", "free", 1, 1732500005000)
+    assert p2["status"] == "accepted"
+    assert aspects() == {"A": "PROCEED", "B": "PROCEED"}
+
+
+def _assert_resolved_conflict(payload: dict, aspects_now: dict) -> None:
+    """Shared assertions for a real two-train junction conflict.
+
+    Exactly one approach proceeds and the other is held, the decision came from
+    the real CP-SAT engine, and ``/block-state`` agrees with the stored decision.
+    """
+    decision = payload["decision"]
+    assert payload["optimizer_triggered"] is True
+    assert decision["conflict"] is True
+    assert decision["decision_source"] == "cpsat"
+    assert decision["solver"]["engine"] == "Google OR-Tools CP-SAT"
+    assert decision["solver"]["status"] in {"OPTIMAL", "FEASIBLE"}
+    assert decision["validation"]["valid"] is True
+    assert len(decision["proceed"]) == 1
+    assert sorted(decision["proceed"] + decision["hold"]) == ["A", "B"]
+
+    # Exactly one HOLD, and it belongs to the approach that was held.
+    assert sorted(aspects_now.values()) == ["HOLD", "PROCEED"]
+    for block, signal in aspects_now.items():
+        expected = "PROCEED" if block in decision["proceed"] else "HOLD"
+        assert signal == expected
+
+    reason = client.get("/block-state").json()["reason"]
+    assert "CP-SAT" in reason
+    assert reason == decision["reason"]
+
+
+def test_hardware_seq_forward_conflict():
+    reset()
+    reset_hardware()
+    # The freight occupies A1 first.
+    assert sensor_event("A1", "occupied", 1, 1732500000000)["status"] == "accepted"
+    # The express arrives on B1 before A2 clears -> genuine conflict.
+    payload = sensor_event("B1", "occupied", 1, 1732500002000)
+    _assert_resolved_conflict(payload, aspects())
+
+
+def test_hardware_seq_reverse_conflict():
+    reset()
+    reset_hardware()
+    # The express occupies B1 first.
+    assert sensor_event("B1", "occupied", 1, 1732500000000)["status"] == "accepted"
+    # The freight arrives on A1 before B2 clears -> mirrored conflict.
+    payload = sensor_event("A1", "occupied", 1, 1732500002000)
+    _assert_resolved_conflict(payload, aspects())
+
+
+def test_hardware_seq_duplicate_debounce():
+    reset()
+    reset_hardware()
+    # First event from sensor_A1, seq=100.
+    assert sensor_event("A1", "occupied", 100, 1732500000000)["status"] == "accepted"
+
+    # A repeated seq is ignored and must not re-run the optimizer.
+    duplicate = sensor_event("A1", "occupied", 100, 1732500000100)
+    assert duplicate["status"] == "ignored"
+    assert duplicate["reason"] == "duplicate_or_stale_seq"
+    assert duplicate["optimizer_triggered"] is False
+
+    # A strictly greater seq is accepted.
+    nxt = sensor_event("A2", "free", 101, 1732500005000)
+    assert nxt["status"] == "accepted"
+    assert aspects() == {"A": "PROCEED", "B": "PROCEED"}
+
+
+def test_esp32_replayed_packet_is_rejected():
+    """A replayed/out-of-order packet is ignored, whatever the arrival timing.
+
+    The locked contract makes ``seq`` strictly monotonic per source, so there is
+    no time-window heuristic: a ``seq`` at or below the last accepted one is
+    always ignored.  This is stricter than a gap-based rule and is what the
+    firmware and ``docs/hardware_contract.md`` section 3.2 specify.
+    """
+    reset()
+    reset_hardware()
+    assert sensor_event("A1", "occupied", 20, 1732500000000)["status"] == "accepted"
+
+    # Stale packet arriving immediately afterwards.
+    stale = sensor_event("A1", "occupied", 10, 1732500000050)
+    assert stale["status"] == "ignored"
+    assert stale["reason"] == "duplicate_or_stale_seq"
+    assert stale["optimizer_triggered"] is False
+
+
+def test_esp32_reboot_requires_reset_or_epoch_seeded_seq():
+    """A rebooting ESP32 restarts its counter, so the contract handles it explicitly.
+
+    Two supported recoveries, both from ``docs/hardware_contract.md``:
+
+    1. seed ``seq`` with ``epoch_ms / 1000`` at boot, which is always above any
+       previously accepted value, so no reset is needed; or
+    2. POST ``/sensor-event/reset`` after a reflash that changes the scheme.
+    """
+    reset()
+    reset_hardware()
+    assert sensor_event("A1", "occupied", 50, 1732500000000)["status"] == "accepted"
+
+    # (1) Epoch-seeded seq from a rebooted board is accepted as a fresh event.
+    reboot_seq = 1732500000  # epoch_ms / 1000
+    accepted = sensor_event("A2", "free", reboot_seq, 1732500001000)
+    assert accepted["status"] == "accepted"
+    assert aspects() == {"A": "PROCEED", "B": "PROCEED"}
+
+    # (2) A board that restarts its counter at 0 is correctly REJECTED, because
+    # the backend cannot distinguish it from a replay without the reset call.
+    reset_hardware()
+    assert sensor_event("B1", "occupied", 0, 1732500002000)["status"] == "accepted"
+    counter_restart = sensor_event("B1", "occupied", 0, 1732500003000)
+    assert counter_restart["status"] == "ignored"
+    assert counter_restart["reason"] == "duplicate_or_stale_seq"
+
+
+def test_esp32_reset_clears_occupancy_and_seq_counters():
+    """``/sensor-event/reset`` is the documented recovery after a reflash."""
+    reset()
+    reset_hardware()
+    assert sensor_event("B1", "occupied", 40, 1732500000000)["status"] == "accepted"
+    assert get_state().get_active_hardware_trains() != []
+
+    payload = client.post("/sensor-event/reset").json()
+    assert payload["status"] == "reset"
+    assert get_state().get_active_hardware_trains() == []
+    assert aspects() == {"A": "PROCEED", "B": "PROCEED"}
+
+    # After the reset the same low seq is accepted again.
+    assert sensor_event("A1", "occupied", 1, 1732500004000)["status"] == "accepted"
+
+
+def test_simulator_mirror_mapping_matches_the_locked_contract():
+    """The persistence mirror must use the SAME junction trains as the contract.
+
+    ``simulator.hardware_state`` feeds only the database mirror, so a silent
+    divergence there would persist confident-looking numbers for the wrong
+    trains.  This pins the two mappings together.
+    """
+    from hardware_state import JUNCTION_TRAIN_MAP
+    from simulator import get_state
+
+    mirror = get_state().hardware_state
+    for block_id, train_id in JUNCTION_TRAIN_MAP.items():
+        assert mirror[block_id]["train_id"] == train_id, block_id
 
 
 def _all_tests():

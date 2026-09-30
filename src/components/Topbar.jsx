@@ -1,9 +1,8 @@
 import Icon from './Icon.jsx'
 import ThemeToggle from './ThemeToggle.jsx'
-import { CONFLICT } from '../data/decision.js'
 import { SYSTEM } from '../data/core.js'
 import { useBackend, useClock } from '../hooks.js'
-import { Badge, Button, StatusDot } from './ui.jsx'
+import { Badge, Button } from './ui.jsx'
 
 const IS_APPLE = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
 
@@ -23,32 +22,30 @@ export default function Topbar({ onMenu, onJump, onOpenPalette }) {
           <Icon name="pin" size={15} />
           {SYSTEM.corridor}
         </span>
-        <span className="topbar__divider" />
-        <span className="topbar__conflict">
-          Conflict <code>{CONFLICT.id}</code>
-        </span>
       </div>
 
-      <button type="button" className="topbar__search" onClick={onOpenPalette} aria-label="Search sections">
+      <button type="button" className="topbar__search" onClick={onOpenPalette} aria-label="Search pages">
         <Icon name="search" size={15} />
-        <span>Search sections…</span>
+        <span>Search pages…</span>
         <kbd>{IS_APPLE ? '⌘' : 'Ctrl'} K</kbd>
       </button>
 
       <div className="topbar__right">
+        {/* One indicator, not two. The "Conflict live" badge and the
+            "Backend live" dot were both driven by the same `online` flag from
+            the same poll, so they could never disagree - they were just
+            saying the same thing twice, in two different colours.
+            Tone follows the real state: live reads as a neutral success,
+            a stale connection reads as a warning. */}
         {online ? (
-          <Badge tone="danger" dot pulse>
-            Conflict live
+          <Badge tone="success" dot pulse>
+            Live
           </Badge>
         ) : (
           <Badge tone="warn" dot>
             {checked ? 'Recorded values' : 'Connecting…'}
           </Badge>
         )}
-        <StatusDot
-          tone={online ? 'success' : 'muted'}
-          label={online ? 'Backend live' : 'Backend offline'}
-        />
         <span className="topbar__clock mono">{clock}</span>
         <ThemeToggle />
         <Button icon="bolt" variant="primary" size="sm" onClick={() => onJump('live')}>

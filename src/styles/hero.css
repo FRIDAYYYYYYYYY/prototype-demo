@@ -230,11 +230,11 @@
   font-variant-numeric: tabular-nums;
 }
 .kpi__delta.is-up {
-  color: var(--success);
+  color: var(--success-ink);
   background: var(--success-soft);
 }
 .kpi__delta.is-down {
-  color: var(--primary);
+  color: var(--primary-ink);
   background: var(--primary-soft);
 }
 .kpi__delta.is-down svg {
@@ -281,7 +281,7 @@
 .hero__foot svg {
   flex-shrink: 0;
   margin-top: 1px;
-  color: var(--primary);
+  color: var(--primary-ink);
 }
 
 
@@ -290,7 +290,7 @@
 .mlstrip {
   margin-top: 22px;
   padding: 16px 18px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
 }

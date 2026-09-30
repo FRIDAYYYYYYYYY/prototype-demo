@@ -5,6 +5,34 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>train-traffic-controller-prototype</title>
+    <script>
+      /*
+       * Apply the theme BEFORE the first paint.
+       *
+       * Without this, <html> has no data-theme, so the light `:root` tokens in
+       * tokens.css apply while the toggle defaults to "dark" - the button claims
+       * dark on a light page, and the first click appears to do nothing. Reading
+       * localStorage here also means the saved choice is honoured on reload, and
+       * setting the attribute up front avoids a flash of the wrong colours.
+       *
+       * Keep the fallback in step with ThemeToggle.jsx.
+       */
+      ;(function () {
+        var KEY = 'rg-theme'
+        var theme = null
+        try {
+          theme = window.localStorage.getItem(KEY)
+        } catch (err) {
+          /* Private mode / storage blocked - fall through to the OS preference. */
+        }
+        if (theme !== 'light' && theme !== 'dark') {
+          var prefersDark =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+          theme = prefersDark ? 'dark' : 'light'
+        }
+        document.documentElement.dataset.theme = theme
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

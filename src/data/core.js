@@ -4,19 +4,30 @@
 export const SYSTEM = {
   name: 'RailGuard AI',
   subtitle: 'Train Traffic Control — Decision Support',
+  // Free text, and the only place the corridor name is defined. The topbar is
+  // its sole consumer, so rename it here to any site you like and the whole
+  // app follows.
   corridor: 'Junction 14 · Mainline A / B',
   safety: 'Decision-support prototype — not safety-certified railway infrastructure.',
   build: 'Phase B · Hardware verification',
 }
 
+// `id` is the stable section key used by the command palette and the
+// cross-page "jump" callbacks. `path` is the real URL for that page, so the
+// sidebar, palette and topbar all navigate from this one list.
 export const NAV = [
-  { id: 'overview', label: 'Overview', icon: 'grid' },
-  { id: 'live', label: 'Live Junction', icon: 'track' },
-  { id: 'decision', label: 'Decision Core', icon: 'cpu' },
-  { id: 'analytics', label: 'Analytics', icon: 'chart' },
-  { id: 'hardware', label: 'Hardware Bridge', icon: 'board' },
-  { id: 'plan', label: 'Delivery Plan', icon: 'flag' },
+  { id: 'overview', path: '/', label: 'Overview', icon: 'grid' },
+  { id: 'live', path: '/live', label: 'Live Junction', icon: 'track' },
+  { id: 'decision', path: '/decision', label: 'Decision Core', icon: 'cpu' },
+  { id: 'analytics', path: '/analytics', label: 'Analytics', icon: 'chart' },
+  { id: 'hardware', path: '/hardware', label: 'Hardware Bridge', icon: 'board' },
+  { id: 'plan', path: '/plan', label: 'Delivery Plan', icon: 'flag' },
 ]
+
+/** Resolve a section id to its route, falling back to the overview. */
+export function pathFor(id) {
+  return NAV.find((item) => item.id === id)?.path ?? '/'
+}
 
 export const KPIS = [
   {

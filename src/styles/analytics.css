@@ -12,10 +12,18 @@
   grid-column: span 6;
 }
 .chart--donut {
-  grid-column: span 4;
+  /* 5 of 12, not 4: the legend beside the donut needs the room. The
+     companion roadmap card drops to 7 so the row still totals 12. */
+  grid-column: span 5;
+  /* The ring + legend only fit side by side while THIS CARD is wide enough.
+     That width changes with the viewport, the sidebar and the grid column, so
+     the switch is driven by the card's own size rather than a guess at the
+     window - see the @container rule further down. */
+  container-type: inline-size;
+  container-name: donutcard;
 }
 .chart--roadmap {
-  grid-column: span 8;
+  grid-column: span 7;
 }
 
 .chart__note {
@@ -89,7 +97,7 @@
 }
 .barchart__delta {
   font-size: 11px;
-  color: var(--success);
+  color: var(--success-ink);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -140,7 +148,11 @@
 
 .donut {
   display: grid;
-  grid-template-columns: 168px 1fr;
+  /* The donut flexes between 96px and 168px; the legend column is
+     minmax(0, 1fr) so it can shrink without being forced open by its own
+     longest label. A bare 1fr here is minmax(auto, 1fr), which let a label
+     like "Duplicate / stale" push the value and percentage off the edge. */
+  grid-template-columns: minmax(96px, 168px) minmax(0, 1fr);
   align-items: center;
   gap: var(--gap-md);
 }
@@ -183,23 +195,71 @@
   padding: 0;
   display: flex;
   flex-direction: column;
+  /* Rows keep their own height instead of being stretched by the ring. */
+  align-content: start;
   gap: 8px;
+  min-width: 0;
 }
 .donut__legend li {
   display: grid;
-  grid-template-columns: 10px 1fr auto auto;
+  /* minmax(0, 1fr) on the name, NOT 1fr: a bare 1fr takes its minimum from
+     the longest word, which is what collapsed the count and percentage
+     columns on a narrow card. */
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 9px;
+  min-height: 20px;
   font-size: 12.5px;
   color: var(--text-dim);
+}
+/* Long conflict names wrap inside their own column rather than overflowing
+   it or stretching the row. */
+.donut__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 .donut__legend b {
   color: var(--text-strong);
   font-variant-numeric: tabular-nums;
+  justify-self: end;
 }
 .donut__legend small {
   color: var(--text-mute);
   font-size: 11px;
+  justify-self: end;
+  min-width: 30px;
+  text-align: right;
+}
+
+/* When the card is too narrow, the ring and the legend starve each other: the
+   name column falls to about 59px and long labels like "Duplicate / stale"
+   wrap onto a second line, which reads as a collapsed row. Stack instead and
+   give the legend the full card width in one column, so every label stays on
+   a single line at any size.
+
+   360px is the card's CONTENT box, which is what a size container query
+   measures (border box minus padding, roughly 40px). Measured, not guessed:
+   a 420px phone gives a 380px card, about 340px of content, and the longest
+   label still wrapped with the two columns side by side.
+
+   This MUST come after the .donut / .donut__legend rules above - at equal
+   specificity a later rule wins, so placing it earlier silently loses. */
+@container donutcard (max-width: 360px) {
+  .donut {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: var(--gap-md);
+  }
+  .donut__svg {
+    max-width: 176px;
+  }
+  .donut__legend {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
 }
 
 /* ---------- Deferred tech columns ---------- */

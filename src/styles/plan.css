@@ -128,10 +128,10 @@
   color: var(--muted);
 }
 .phase.is-done .phase__items svg {
-  color: var(--success);
+  color: var(--success-ink);
 }
 .phase.is-active .phase__items svg {
-  color: var(--primary);
+  color: var(--primary-ink);
 }
 
 
@@ -271,7 +271,7 @@
 .checkgroup svg {
   flex-shrink: 0;
   margin-top: 2px;
-  color: var(--success);
+  color: var(--success-ink);
 }
 
 /* ---------- Technology stack ---------- */
@@ -291,7 +291,7 @@
   font-weight: 600;
   letter-spacing: 0.01em;
   text-transform: none;
-  color: var(--primary);
+  color: var(--primary-ink);
 }
 .stackcol dl {
   margin: 0;

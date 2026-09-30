@@ -150,7 +150,7 @@
   color: var(--text-strong);
 }
 .schema__type {
-  color: var(--primary);
+  color: var(--primary-ink);
   font-size: 11.5px;
 }
 .schema__example {
@@ -204,9 +204,9 @@
 }
 .pintable__sig {
   justify-self: start;
-  color: var(--primary);
+  color: var(--primary-ink);
   font-size: 11.5px;
 }
 .pintable__note svg {
-  color: var(--warn);
+  color: var(--warn-ink);
 }

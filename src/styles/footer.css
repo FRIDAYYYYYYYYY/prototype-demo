@@ -16,7 +16,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  color: var(--primary);
+  color: var(--primary-ink);
 }
 .footer__brand strong {
   color: var(--text-strong);
@@ -36,7 +36,7 @@
   max-width: 70ch;
 }
 .footer__safety svg {
-  color: var(--warn);
+  color: var(--warn-ink);
   flex-shrink: 0;
 }
 .footer__meta {

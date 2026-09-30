@@ -43,7 +43,7 @@
     left: 0;
     top: 0;
     width: 284px;
-    background: var(--glass-2);
+    background: var(--sidebar-bg);
     transform: translateX(-102%);
     transition: transform var(--t-slow) var(--ease-out);
     box-shadow: var(--shadow-xl);
@@ -111,9 +111,6 @@
     padding-bottom: 6px;
     min-width: 0;
   }
-  .topbar__divider {
-    display: none;
-  }
   .topbar__search {
     order: 1;
     min-width: 0;
@@ -142,16 +139,8 @@
     grid-template-columns: 1fr;
   }
 
-  .donut {
-    grid-template-columns: 1fr;
-    justify-items: center;
-  }
-  .donut__svg {
-    max-width: 200px;
-  }
-  .donut__legend {
-    width: 100%;
-  }
+  /* The donut's own ring/legend switch is handled by a @container query in
+     analytics.css, driven by the card's real width rather than the window. */
 
   .conflict__trains {
     grid-template-columns: 1fr;

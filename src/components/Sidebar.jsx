@@ -1,8 +1,23 @@
+import { NavLink } from 'react-router-dom'
 import Icon from './Icon.jsx'
 import { NAV, SYSTEM } from '../data/core.js'
+import { useBackend } from '../hooks.js'
 import { Badge, StatusDot } from './ui.jsx'
 
-export default function Sidebar({ active, onNavigate, open, onClose }) {
+/**
+ * Primary navigation.
+ *
+ * Each entry is a real <NavLink>, so the URL, the browser back/forward stack
+ * and middle-click all behave the way they do for any other site. NavLink also
+ * supplies `aria-current="page"` for free, which replaces the manual
+ * `active === item.id` comparison the scroll-spy version needed.
+ */
+export default function Sidebar({ open, onClose }) {
+  // Same poll as the topbar, so the two can never contradict each other.
+  // Polled once here rather than shared via context: it is one extra health
+  // request per 5s and avoids re-rendering the whole shell on every tick.
+  const { online } = useBackend(5000)
+
   return (
     <>
       <div className={`scrim ${open ? 'is-open' : ''}`} onClick={onClose} aria-hidden="true" />
@@ -25,18 +40,20 @@ export default function Sidebar({ active, onNavigate, open, onClose }) {
           <ul>
             {NAV.map((item) => (
               <li key={item.id}>
-                <button
-                  type="button"
-                  className={`navitem ${active === item.id ? 'is-active' : ''}`}
-                  onClick={() => onNavigate(item.id)}
-                  aria-current={active === item.id ? 'true' : undefined}
+                {/* end: "/" must not match every route, or Overview would
+                    read as active on /live and every other page. */}
+                <NavLink
+                  to={item.path}
+                  end
+                  className={({ isActive }) => `navitem ${isActive ? 'is-active' : ''}`}
+                  onClick={() => onClose()}
                 >
                   <span className="navitem__icon">
                     <Icon name={item.icon} size={18} />
                   </span>
                   <span className="navitem__label">{item.label}</span>
                   <span className="navitem__rail" />
-                </button>
+                </NavLink>
               </li>
             ))}
           </ul>
@@ -44,7 +61,14 @@ export default function Sidebar({ active, onNavigate, open, onClose }) {
 
         <div className="sidebar__foot">
           <div className="sidebar__status">
-            <StatusDot tone="success" label="Bridge online" />
+            {/* This used to be hardcoded to tone="success", so the sidebar
+                claimed "Bridge online" even when the API was unreachable and
+                the topbar was simultaneously saying "Recorded values". It now
+                reads the same polled state the topbar uses. */}
+            <StatusDot
+              tone={online ? 'success' : 'warn'}
+              label={online ? 'Bridge online' : 'Bridge offline'}
+            />
             <Badge tone="indigo">Phase B</Badge>
           </div>
           <p className="sidebar__safety">

@@ -1,5 +1,41 @@
 // Live junction state: blocks, signals and the sensor event stream.
 
+/**
+ * The two movements the physical junction carries, with the real priority and
+ * cost weight taken from backend/simulator.py TRAINS and the mapping in
+ * backend/hardware_state.py JUNCTION_TRAIN_MAP.
+ *
+ *   priority - lower number wins a conflict (1 is the highest priority)
+ *   weight   - passenger-weighted delay cost. Delaying a weight-3 express
+ *              counts three times as much as delaying a weight-1 freight,
+ *              which is what makes CP-SAT prefer the express at the merge.
+ *
+ * This lives here, not in the component, so the diagram and the explanation
+ * layer can never quote different numbers for the same train.
+ */
+export const JUNCTION_MOVEMENTS = {
+  A: {
+    approach: 'A',
+    train: 'T305',
+    name: 'Coal Freight 305',
+    type: 'Freight',
+    priority: 4,
+    weight: 1,
+    runMin: 8,
+    css: 'train--freight',
+  },
+  B: {
+    approach: 'B',
+    train: 'T101',
+    name: 'Rajdhani Express',
+    type: 'Express',
+    priority: 1,
+    weight: 3,
+    runMin: 5,
+    css: 'train--express',
+  },
+}
+
 export const SIGNAL_STATES = {
   PROCEED: { tone: 'success', label: 'PROCEED', hint: 'Line clear for this approach' },
   HOLD: { tone: 'danger', label: 'HOLD', hint: 'Approach held for the other movement' },

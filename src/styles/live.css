@@ -1,4 +1,179 @@
 /* ============================================================
+   Y-junction topology
+   ------------------------------------------------------------
+   Two approach arms converge on one shared stem. The acute angle
+   between an arm and the stem is 30/45/60 deg (laptop/tablet/phone),
+   chosen in JS so the drawing and the train motion share one source
+   of truth (see src/junctionGeometry.js).
+   ============================================================ */
+
+.jsvg {
+  overflow: visible;
+}
+
+.jlabel {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  fill: var(--text-mute);
+  /* A soft halo in the panel colour, so even if track work runs close to a
+     label the text stays legible instead of being struck through. */
+  paint-order: stroke fill;
+  stroke: var(--svg-surface);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+.jlabel--junction {
+  fill: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+}
+.jlabel--approach {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+}
+.jlabel--stem {
+  fill: var(--text-mute);
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+}
+
+/* Rails: a solid bed, drawn once for both arms and the stem. */
+.jrails path {
+  fill: none;
+  stroke: var(--track-a);
+  stroke-width: 13;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.jrails path:last-child {
+  stroke: var(--track-b);
+}
+
+/* Sleeper ticks, flowing toward the exit. */
+.jflow {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2.5;
+  stroke-dasharray: 13 11;
+  stroke-linecap: round;
+  opacity: 0.34;
+  animation: jflow 2.8s linear infinite;
+}
+@keyframes jflow {
+  to {
+    stroke-dashoffset: -48;
+  }
+}
+
+/* Measurement paths are sampled by JS but must never be painted. */
+.jmeasure {
+  fill: none;
+  stroke: none;
+  pointer-events: none;
+}
+
+/* ---------- Signal heads ---------- */
+
+.jsignal__post {
+  fill: var(--svg-idle-line);
+}
+.jsignal__head {
+  fill: var(--surface);
+  stroke: var(--svg-idle-line);
+  stroke-width: 1.4;
+}
+.jsignal__lamp.is-off {
+  fill: var(--muted);
+  opacity: 0.28;
+}
+.jsignal__lamp.is-lit {
+  animation: jlamp 1.9s ease-in-out infinite;
+}
+@keyframes jlamp {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+.jsignal__label,
+.jsignal__aspect {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.jsignal__label {
+  fill: var(--text-dim);
+}
+.jsignal__aspect {
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+}
+
+/* ---------- Trains ---------- */
+/* Position and rotation are set inline from the sampled track point,
+   so no CSS animation touches `transform` here - that would fight
+   the JS and knock the train off the rails. Only `fill` is styled. */
+
+.train--freight {
+  color: var(--secondary);
+}
+.train--express {
+  color: var(--primary-ink);
+}
+.train__body {
+  fill: currentColor;
+  opacity: 0.95;
+}
+.train__win {
+  fill: var(--surface);
+  opacity: 0.92;
+}
+.train__nose {
+  fill: var(--surface);
+  opacity: 0.75;
+}
+.train__wheel {
+  fill: var(--text-mute);
+  opacity: 0.55;
+}
+.train__label {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Headlights ---------- */
+/* The beam is a child of the rotated train group, so it inherits the track
+   angle exactly - it cannot drift out of line with the rails. */
+
+.train__beam {
+  fill: url(#beamFade);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+.train__beam--core {
+  fill: url(#beamCore);
+}
+.train__lamp {
+  fill: var(--lamp-glow);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jflow,
+  .jsignal__lamp.is-lit {
+    animation: none;
+  }
+}
+
+/* ============================================================
    Live junction: corridor map, event stream, replays
    ============================================================ */
 
@@ -30,108 +205,249 @@
   border: 1px solid var(--line-soft);
 }
 
-.corridor__flow {
-  animation: dash-flow 3.6s linear infinite;
+/* ============================================================
+   Junction reasoning layer
+   ------------------------------------------------------------
+   Sits beneath the diagram and spells out the advisory decision:
+   who is stopped, who is cleared, why, and the priority and
+   cost-weight numbers behind it.
+   ============================================================ */
+
+.jx {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  margin-top: var(--gap-md);
+  padding: var(--pad-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  background: var(--surface-2);
 }
 
-.corridor__approach,
-.corridor__junction {
-  font-family: var(--sans);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
+.jx__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
 }
-.corridor__junction {
-  fill: var(--text-dim);
-  letter-spacing: 0.22em;
+.jx__head svg {
+  color: var(--primary-ink);
+  flex-shrink: 0;
+}
+.jx__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+.jx__tag {
+  margin-left: auto;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--text-mute);
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  white-space: nowrap;
 }
 
-.block {
-  animation: fade-in 0.8s var(--ease-standard) both;
+/* The one-sentence verdict, stated before the detail. */
+.jx__verdictline {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 11px 13px;
+  border-radius: var(--r-md);
+  background: var(--primary-softer);
+  border: 1px solid var(--primary-line);
 }
-.block.is-active rect {
-  animation: blink 2.4s ease-in-out infinite;
+.jx__verdictline strong {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text-strong);
 }
-.block__id,
-.block__gpio {
-  font-family: var(--mono);
-  font-size: 13px;
-  font-weight: 700;
+.jx__verdictline span {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
 }
-.block__gpio {
-  font-size: 11px;
+
+.jx__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.jx__row {
+  display: grid;
+  grid-template-columns: 4px minmax(0, 1.5fr) auto minmax(0, 1.1fr);
+  align-items: center;
+  gap: var(--gap-md);
+  padding: 11px 13px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  transition: border-color var(--t-base) var(--ease-standard);
+}
+.jx__row.is-active {
+  border-color: var(--primary-line);
+  background: var(--primary-softer);
+}
+
+/* Colour key matching the train in the diagram. */
+.jx__swatch {
+  align-self: stretch;
+  border-radius: var(--r-pill);
+  background: var(--muted);
+}
+.jx__swatch.train--freight {
+  background: var(--secondary);
+}
+.jx__swatch.train--express {
+  background: var(--primary);
+}
+
+.jx__who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.jx__who strong {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text-strong);
+}
+.jx__type {
   font-weight: 500;
+  color: var(--text-dim);
+}
+.jx__who small {
+  font-size: 11.5px;
+  color: var(--text-mute);
 }
 
-.junction__halo {
-  fill: var(--primary-softer);
-  stroke: var(--primary-line);
-  stroke-width: 1;
-  animation: soft-pulse 3s ease-in-out infinite;
+/* The factors that drove the decision. */
+.jx__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
-.junction__shape {
-  fill: var(--primary-soft);
-  stroke: var(--primary);
-  stroke-width: 1.6;
+.jx__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-mute);
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  white-space: nowrap;
 }
-.junction__text {
-  font-family: var(--sans);
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  fill: var(--text-strong);
-}
-
-.lamp__on {
-  animation: blink 1.8s ease-in-out infinite;
-}
-.lamp__label {
+.jx__chip b {
   font-family: var(--mono);
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+  font-weight: 700;
+  color: var(--text-strong);
 }
 
-/* Trains roll gently back and forth along the block */
-.train {
-  color: var(--primary);
-  animation: roll-in 6s ease-in-out infinite alternate;
+/* Weight drawn to scale, so x3 really looks heavier than x1. */
+.jx__meter {
+  display: inline-flex;
+  gap: 2px;
 }
-.train--violet {
-  color: var(--secondary);
-  animation-duration: 7.4s;
-  animation-direction: alternate-reverse;
+.jx__pip {
+  width: 5px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--line);
 }
-.train__body {
-  fill: currentColor;
-  opacity: 0.95;
+.jx__pip.is-on.tone-freight {
+  background: var(--secondary);
 }
-.train__win {
-  fill: var(--surface);
-  opacity: 0.9;
+.jx__pip.is-on.tone-express {
+  background: var(--primary);
 }
-.train__nose {
-  fill: var(--surface);
-  opacity: 0.75;
+
+.jx__verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  justify-content: flex-end;
+  min-width: 0;
 }
-.train__wheel {
-  fill: var(--text-mute);
-  opacity: 0.55;
+.jx__verdict small {
+  flex-basis: 100%;
+  text-align: right;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-mute);
 }
-.train__label {
-  font-family: var(--mono);
+.jx__sig {
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
 }
 
-@keyframes roll-in {
-  from {
-    transform: translateX(0);
+.jx__foot {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding-top: var(--gap-sm);
+  border-top: 1px dashed var(--line);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-mute);
+}
+.jx__foot svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--primary-ink);
+}
+
+/* Stack the reasoning row on narrow screens rather than squeezing it. */
+@media (max-width: 620px) {
+  .jx {
+    padding: 15px;
   }
-  to {
-    transform: translateX(150px);
+  .jx__row {
+    grid-template-columns: 4px minmax(0, 1fr);
+    row-gap: 10px;
   }
+  .jx__chips,
+  .jx__verdict {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+  .jx__verdict small {
+    text-align: left;
+  }
+  .jx__tag {
+    display: none;
+  }
+}
+
+/* The diagram is an illustration of the alternating movement sequence, not
+   live telemetry - say so, so nobody reads the animation as a clearance. */
+.corridor__caption {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-mute);
+}
+.corridor__caption svg {
+  flex-shrink: 0;
+  color: var(--primary-ink);
 }
 
 .corridor__signals {
@@ -220,7 +536,7 @@
   white-space: nowrap;
 }
 .evrow__ms {
-  color: var(--primary);
+  color: var(--primary-ink);
   text-align: right;
   font-size: 11.5px;
 }
@@ -250,7 +566,7 @@
 .conflict__note svg {
   flex-shrink: 0;
   margin-top: 1px;
-  color: var(--primary);
+  color: var(--primary-ink);
 }
 
 /* ---------- Replay list ---------- */
@@ -336,7 +652,7 @@
   align-items: center;
   gap: 8px;
   padding: 7px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-2);
 }
@@ -352,7 +668,7 @@
   font-size: 11.5px;
   font-weight: 600;
   padding: 5px 11px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--surface-2);
   color: var(--text-dim);
@@ -361,8 +677,8 @@
 }
 .replay__run:hover:not(:disabled) {
   background: var(--primary);
-  border-color: var(--primary);
-  color: #fff;
+  border-color: var(--primary-ink);
+  color: var(--on-primary);
 }
 .replay__run:disabled {
   opacity: 0.5;

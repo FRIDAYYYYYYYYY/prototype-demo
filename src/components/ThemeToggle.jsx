@@ -1,21 +1,45 @@
 import { useCallback, useEffect, useState } from 'react'
 import Icon from './Icon.jsx'
 
-/** Light / dark switch. Persisted to localStorage; defaults to dark. */
-export default function ThemeToggle() {
-  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || 'dark')
+/** Key shared with the pre-paint bootstrap script in index.html. */
+const THEME_KEY = 'rg-theme'
 
+/**
+ * Read the theme from the document rather than a second copy in state.
+ * index.html sets `data-theme` before the first paint, so this is always the
+ * real current value - including a choice carried over from a previous visit.
+ */
+function currentTheme() {
+  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'
+}
+
+/** Light / dark switch. Persisted to localStorage; follows the OS on first run. */
+export default function ThemeToggle() {
+  const [theme, setTheme] = useState(currentTheme)
+
+  const apply = useCallback((next) => {
+    document.documentElement.dataset.theme = next
+    setTheme(next)
+    try {
+      localStorage.setItem(THEME_KEY, next)
+    } catch {
+      /* private mode - the in-memory switch still works */
+    }
+  }, [])
+
+  // Derive the next theme from the DOM, not from `theme`, so the button can
+  // never disagree with what is actually painted.
   const toggle = useCallback(() => {
-    setTheme((prev) => {
-      const next = prev === 'dark' ? 'light' : 'dark'
-      document.documentElement.dataset.theme = next
-      try {
-        localStorage.setItem('rg-theme', next)
-      } catch {
-        /* private mode - the in-memory switch still works */
-      }
-      return next
-    })
+    apply(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark')
+  }, [apply])
+
+  // Keep in step if the theme changes in another tab, or via devtools.
+  useEffect(() => {
+    const onStorage = (event) => {
+      if (event.key === THEME_KEY) setTheme(currentTheme())
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
   }, [])
 
   // Enable the global theme cross-fade only after the first paint.

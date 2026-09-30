@@ -37,6 +37,26 @@ export default function LiveJunction() {
   const signals = toSignals(blockState)
   const isLive = Boolean(blockState)
 
+  // Feed the real signal aspects into the diagram when the backend is
+  // answering, so the lamps show genuine state rather than only the
+  // local alternation animation.
+  //
+  // Only PROCEED/HOLD are adopted. A STALE aspect is deliberately NOT
+  // treated as a clearance - the rest of this app already refuses to
+  // present stale data as live (see usePolledEndpoint and the signal
+  // strip below), so the diagram must not either. With no genuine
+  // reading we fall back to the local alternation, which is clearly
+  // labelled as an illustration.
+  const liveAspects = useMemo(() => {
+    if (!signals) return null
+    const byBlock = {}
+    for (const sig of signals) {
+      if (sig.state === 'PROCEED' || sig.state === 'HOLD') byBlock[sig.approach] = sig.state
+    }
+    if (!byBlock.A || !byBlock.B) return null
+    return { A: byBlock.A, B: byBlock.B }
+  }, [signals])
+
   const conflictCount = useMemo(
     () => events.filter((e) => e.result.toLowerCase().includes('conflict')).length,
     [events],
@@ -81,7 +101,7 @@ export default function LiveJunction() {
           meta={isLive ? 'A / B · live' : 'A / B · offline'}
           tone={isLive ? 'teal' : 'muted'}
         />
-        <Corridor />
+        <Corridor liveAspects={liveAspects} />
         {signals && (
           <ul className="signalstrip">
             {signals.map((sig) => (
