@@ -35,9 +35,15 @@ from typing import Any, Dict, List, Literal, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import json
+from urllib.parse import parse_qs
+
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, field_validator, model_validator
+from fastapi.responses import JSONResponse
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
 from database import (
     init_db,
@@ -107,6 +113,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def normalize_sensor_event_content_type(request: Request, call_next):
+    """Ensure ESP32 sensor-event payloads are parsed as JSON even if Content-Type is text/plain or urlencoded."""
+    path = request.url.path.rstrip("/")
+    if path == "/sensor-event" and request.method == "POST":
+        ct = request.headers.get("content-type", "").lower()
+        if "application/json" not in ct:
+            body = await request.body()
+            if body:
+                text = body.decode("utf-8", errors="replace").strip()
+                if (text.startswith("{") and text.endswith("}")) or (text.startswith("[") and text.endswith("]")):
+                    # Raw JSON sent with text/plain, text/json or missing header
+                    new_headers = [(k, v) for k, v in request.scope["headers"] if k.lower() != b"content-type"]
+                    new_headers.append((b"content-type", b"application/json"))
+                    request.scope["headers"] = new_headers
+                else:
+                    # Form-urlencoded data, e.g. block_id=A1&state=occupied&...
+                    try:
+                        parsed = parse_qs(text)
+                        if parsed and ("block_id" in parsed or "sensor_id" in parsed or "sensor" in parsed):
+                            data = {k: v[0] if len(v) == 1 else v for k, v in parsed.items()}
+                            new_body = json.dumps(data).encode("utf-8")
+                            request._body = new_body
+
+                            async def receive():
+                                return {"type": "http.request", "body": new_body, "more_body": False}
+
+                            request._receive = receive
+                            request.scope["_body"] = new_body
+                            new_headers = [(k, v) for k, v in request.scope["headers"] if k.lower() != b"content-type"]
+                            new_headers.append((b"content-type", b"application/json"))
+                            request.scope["headers"] = new_headers
+                    except Exception:
+                        pass
+    return await call_next(request)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Detailed logger for 422 Unprocessable Entity errors so hardware mismatches can be diagnosed instantly."""
+    try:
+        raw_body = await request.body()
+        body_text = raw_body.decode("utf-8", errors="replace")
+    except Exception:
+        body_text = "<unreadable>"
+
+    client_ip = request.client.host if request.client else "unknown"
+    logging.getLogger("junction.hardware").warning(
+        "Validation 422 on %s %s from %s: %s | raw_body=%s",
+        request.method, request.url.path, client_ip, exc.errors(), body_text
+    )
+    # Output to stdout so dispatcher console sees the exact cause
+    print(f"\n[HARDWARE 422 ERROR] {request.method} {request.url.path} from {client_ip}", flush=True)
+    print(f"  Pydantic errors: {exc.errors()}", flush=True)
+    print(f"  Raw incoming payload: {body_text}\n", flush=True)
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors()), "body": body_text})
+
 # ---------------------------------------------------------------------------
 # Request models
 # ---------------------------------------------------------------------------
@@ -156,13 +220,126 @@ class SensorEventRequest(BaseModel):
     :data:`hardware_state.SENSOR_CONTRACT`.
     """
 
-    block_id: str = Field(description="Sensor ID: A1, A2, B1 or B2")
-    state: str = Field(description="'occupied' for A1/B1, 'free' for A2/B2")
-    event_type: str = Field(default="sensor_triggered", description="contract event type")
-    timestamp: int = Field(description="epoch milliseconds", gt=0)
-    device_ms: Optional[int] = Field(default=None, description="ESP32 device monotonic timestamp in milliseconds from millis()")
-    source: str = Field(min_length=1, description="idempotency key, e.g. 'sensor_A1'")
-    seq: int = Field(ge=0, description="monotonically increasing per source")
+    block_id: str = Field(
+        validation_alias=AliasChoices("block_id", "sensor_id", "sensor", "sensorId", "pin_id"),
+        description="Sensor ID: A1, A2, B1 or B2",
+    )
+    state: str = Field(
+        validation_alias=AliasChoices("state", "status", "val", "value", "level"),
+        description="'occupied' for A1/B1, 'free' for A2/B2",
+    )
+    event_type: str = Field(
+        default="sensor_triggered",
+        validation_alias=AliasChoices("event_type", "type", "eventType"),
+        description="contract event type",
+    )
+    timestamp: int = Field(
+        default_factory=lambda: int(time.time() * 1000),
+        description="epoch milliseconds",
+    )
+    device_ms: Optional[int] = Field(
+        default=None,
+        validation_alias=AliasChoices("device_ms", "deviceMs", "millis"),
+        description="ESP32 device monotonic timestamp in milliseconds from millis()",
+    )
+    source: Optional[str] = Field(
+        default=None,
+        description="idempotency key, e.g. 'sensor_A1'",
+    )
+    seq: int = Field(
+        validation_alias=AliasChoices("seq", "sequence", "seq_num", "seqId", "seq_id"),
+        description="monotonically increasing per source",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _pre_normalize(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+
+        # 1. State normalization
+        st = d.get("state") or d.get("status") or d.get("value") or d.get("val") or d.get("level")
+        if st is not None:
+            if isinstance(st, bool):
+                st = "occupied" if st else "free"
+            elif isinstance(st, (int, float)):
+                st = "occupied" if st == 1 else ("free" if st == 0 else str(st))
+            else:
+                s_str = str(st).strip()
+                s_lower = s_str.lower()
+                if s_lower in ("occupied", "active", "triggered", "high", "1", "true"):
+                    st = "occupied"
+                elif s_lower in ("free", "clear", "cleared", "low", "0", "false"):
+                    st = "free"
+                else:
+                    st = s_str
+            d["state"] = st
+
+        # 2. Block ID normalization
+        b_id = d.get("block_id") or d.get("sensor_id") or d.get("sensor") or d.get("sensorId") or d.get("pin_id")
+        if b_id is not None:
+            b_str = str(b_id).strip()
+            b_upper = b_str.upper()
+            if b_upper in ("A", "B"):
+                # If given logical block 'A' or 'B', resolve to sensor A1/A2 or B1/B2 using state
+                curr_state = d.get("state")
+                if curr_state == "free":
+                    b_upper = f"{b_upper}2"
+                else:
+                    b_upper = f"{b_upper}1"
+            d["block_id"] = b_upper
+
+        # 3. Timestamp normalization
+        ts = d.get("timestamp")
+        if ts is not None:
+            if isinstance(ts, str):
+                ts_str = ts.strip()
+                try:
+                    ts_num = float(ts_str)
+                    if ts_num.is_integer() or "." in ts_str:
+                        d["timestamp"] = int(ts_num)
+                except ValueError:
+                    pass  # pass through so validator can reject strings like "soon"
+            elif isinstance(ts, float):
+                d["timestamp"] = int(ts)
+
+        # 4. Seq normalization
+        sq = d.get("seq") or d.get("sequence") or d.get("seq_num") or d.get("seqId") or d.get("seq_id")
+        if sq is not None:
+            if isinstance(sq, str):
+                sq_str = sq.strip()
+                try:
+                    d["seq"] = int(float(sq_str))
+                except ValueError:
+                    pass
+            elif isinstance(sq, float):
+                d["seq"] = int(sq)
+
+        # 5. Device_ms normalization
+        dev = d.get("device_ms") or d.get("deviceMs") or d.get("millis")
+        if dev is not None:
+            if isinstance(dev, str):
+                try:
+                    d["device_ms"] = int(float(dev.strip()))
+                except ValueError:
+                    pass
+            elif isinstance(dev, float):
+                d["device_ms"] = int(dev)
+
+        # 6. Event type normalization
+        et = d.get("event_type") or d.get("type") or d.get("eventType")
+        if et is not None:
+            et_str = str(et).strip().lower()
+            if et_str in ("sensor_triggered", "triggered", "sensor_event", "sensortriggered"):
+                d["event_type"] = "sensor_triggered"
+
+        # 7. Source default if omitted
+        src = d.get("source")
+        if src is None and d.get("block_id"):
+            d["source"] = f"sensor_{d['block_id']}"
+
+        return d
 
     @field_validator("block_id")
     @classmethod
@@ -184,9 +361,23 @@ class SensorEventRequest(BaseModel):
 
     @field_validator("source")
     @classmethod
-    def _non_empty_source(cls, value: str) -> str:
-        if not value.strip():
+    def _non_empty_source(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.strip():
             raise ValueError("'source' must be a non-empty string")
+        return value
+
+    @field_validator("timestamp")
+    @classmethod
+    def _positive_timestamp(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("timestamp must be greater than 0")
+        return value
+
+    @field_validator("seq")
+    @classmethod
+    def _non_negative_seq(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("seq must be greater than or equal to 0")
         return value
 
     @model_validator(mode="after")
@@ -198,6 +389,8 @@ class SensorEventRequest(BaseModel):
                 f"sensor {self.block_id} must report state '{expected}', "
                 f"got '{self.state}'"
             )
+        if not self.source:
+            self.source = f"sensor_{self.block_id}"
         return self
 
     @property
@@ -729,6 +922,7 @@ def _persist_sensor_event(
 
 
 @app.post("/sensor-event", summary="Receive one ESP32 sensor event")
+@app.post("/sensor-event/", include_in_schema=False)
 def post_sensor_event(request: SensorEventRequest, http_request: Request) -> Dict[str, Any]:
     """Ingest a sensor event: validate, de-duplicate, update state, decide.
 
