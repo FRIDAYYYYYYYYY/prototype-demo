@@ -208,7 +208,7 @@ class SensorEventRequest(BaseModel):
     def train_id(self) -> str:
         return SENSOR_CONTRACT[self.block_id]["train_id"]
 
-# Alias for backwards compatibility
+#: Backwards-compatible alias.
 SensorEventPayload = SensorEventRequest
 
 
@@ -571,6 +571,58 @@ def reset_simulation(request: Optional[ResetRequest] = None) -> Dict[str, Any]:
     return res
 
 
+@app.get("/persistence", summary="Database persistence layer status")
+def read_persistence_status() -> Dict[str, Any]:
+    """Whether the SQL persistence layer is actually wired up.
+
+    ``enabled`` is false when ``DATABASE_URL`` is unset, in which case every
+    ``persist_*`` call is a no-op and the dashboard says so rather than implying
+    that data is being stored.
+    """
+    import database
+
+    eng = database.get_engine()
+    return {
+        "enabled": eng is not None,
+        "dialect": eng.dialect.name if eng is not None else None,
+        "url_configured": bool(os.environ.get("DATABASE_URL")),
+        "tables_initialized": bool(database._db_initialized),
+        "advisory": (
+            "Advisory telemetry only - the junction decision itself is computed "
+            "in-process and is not gated on the database being available."
+        ),
+    }
+
+
+@app.get("/ml/status", summary="Advisory ML layer status")
+def read_ml_status() -> Dict[str, Any]:
+    """Report the real state of the advisory ETA model.
+
+    ``trained`` reflects whether the model has actually been fitted, and
+    ``available`` whether scikit-learn could even be imported, so the UI never
+    claims a predictor is running when it is not.
+    """
+    import eta_forecast
+
+    metrics = eta_forecast._METRICS or {}
+    return {
+        "predictor": {
+            "name": "GradientBoostingRegressor",
+            # eta_forecast imports sklearn at module scope, so reaching this
+            # handler at all means the dependency is installed.
+            "available": True,
+            "trained": eta_forecast._MODEL is not None,
+            "benchmark": metrics.get("benchmark"),
+            "ml_mae_seconds": metrics.get("ml_mae_seconds"),
+            "baseline_mae_seconds": metrics.get("baseline_mae_seconds"),
+        },
+        "anomaly_detector": {
+            "version": "gap-detector",
+            "enabled": True,
+            "note": "Sensor arrival-gap heuristic, not a trained model.",
+        },
+    }
+
 @app.get("/eta-forecast", summary="Advisory ETA predictions to junction")
 def read_eta_forecast() -> Dict[str, Any]:
     from eta_forecast import get_eta_forecasts
@@ -627,12 +679,71 @@ def read_hardware_status() -> Dict[str, Any]:
     return {"state": state_obj.snapshot(), "events": list(state_obj.event_log)}
 
 
+def _current_signals() -> Dict[str, str]:
+    """Current PROCEED/HOLD aspect per logical block, from the authoritative state."""
+    state_obj = get_hardware_state()
+    decision = state_obj.decision
+    if not (decision and decision.get("conflict")):
+        return {block: "PROCEED" for block in LOGICAL_BLOCK_IDS}
+    proceed = set(decision.get("proceed", []))
+    return {
+        block: ("PROCEED" if block in proceed else "HOLD")
+        for block in LOGICAL_BLOCK_IDS
+    }
+
+
+def _persist_sensor_event(
+    request: SensorEventRequest,
+    http_request: Request,
+    action_taken: str,
+    signals: Dict[str, str],
+    reason: str,
+) -> None:
+    """Mirror an accepted sensor event into the simulator and the database.
+
+    The simulator mirror exists purely so ``persist_hardware_event`` has the
+    structured 2-train numbers (``ready_time_*``, ``weight_*``, ``entry_*``,
+    ``delay_*``, ``objective_value``, ``wall_time_ms``) that the
+    ``junction_decisions`` table stores.  A persistence failure must never fail
+    the hardware call, so everything here is best-effort.
+    """
+    try:
+        sim = get_state().process_sensor_event(request.model_dump())
+        active_trains = sim.get("active_trains", [])
+        action_taken = sim.get("action_taken", action_taken)
+        decision = get_state().last_junction_decision
+    except Exception as exc:  # noqa: BLE001 - persistence must never break intake
+        logger.warning("sensor-event persistence mirror failed: %s", exc)
+        return
+
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    persist_hardware_event(
+        event_payload=request.model_dump(),
+        client_ip=client_ip,
+        action_taken=action_taken,
+        signals=signals,
+        reason=reason,
+        active_trains=active_trains,
+        junction_decision=decision,
+    )
+
+
 @app.post("/sensor-event", summary="Receive one ESP32 sensor event")
-def post_sensor_event(request: SensorEventRequest) -> Dict[str, Any]:
+def post_sensor_event(request: SensorEventRequest, http_request: Request) -> Dict[str, Any]:
     """Ingest a sensor event: validate, de-duplicate, update state, decide.
 
     A malformed payload never mutates state and never crashes the service (Pydantic
     rejects it with 422 before this handler runs).
+
+    Two state machines are updated from the one accepted event:
+
+    * :mod:`hardware_state` + :mod:`junction_adapter` are authoritative.  They own
+      occupancy, idempotency, the stored decision and every advisory field, and
+      they are what ``GET /block-state`` and ``GET /hardware/status`` report.
+    * :meth:`simulator.SimulationState.process_sensor_event` is mirrored for the
+      persistence layer only, because ``junction_decisions`` stores the structured
+      2-train numbers (ready times, weights, entry/delay) produced by
+      ``optimize_junction_conflict``.
     """
     state_obj = get_hardware_state()
     sensor_id = request.block_id
@@ -710,28 +821,27 @@ def post_sensor_event(request: SensorEventRequest) -> Dict[str, Any]:
         )
 
         decision = _recompute_decision(state_obj)
+        signals = _current_signals()
+
+    reason = (decision or {}).get("reason") or (
+        f"{JUNCTION_TRAIN_MAP[block_id]} is approaching the junction on block "
+        f"{block_id} and no other train is detected, so it may proceed."
+        if request.state == "occupied"
+        else "Junction is clear - both approaches are free."
+    )
+    _persist_sensor_event(
+        request,
+        http_request,
+        action_taken="conflict_evaluated" if (decision and decision.get("conflict")) else "state_updated",
+        signals=signals,
+        reason=reason,
+    )
 
     active_trains = [JUNCTION_TRAIN_MAP[b] for b in sorted(state_obj.occupied_blocks()) if b in JUNCTION_TRAIN_MAP]
     action_taken = (
         "conflict_evaluated" if (decision and decision.get("conflict"))
         else ("signal_granted" if request.state == "occupied" else "state_updated")
     )
-
-    # Persistence integration
-    try:
-        client_ip = "127.0.0.1"
-        persist_hardware_event(
-            event_payload=request.model_dump(),
-            client_ip=client_ip,
-            action_taken=action_taken,
-            signals={"A": "PROCEED" if decision and "A" in decision.get("proceed", []) else ("PROCEED" if not (decision and decision.get("conflict")) else "HOLD"),
-                     "B": "PROCEED" if decision and "B" in decision.get("proceed", []) else ("HOLD" if (decision and decision.get("conflict")) else "PROCEED")},
-            reason=decision.get("reason", "") if decision else "",
-            active_trains=active_trains,
-            junction_decision=decision,
-        )
-    except Exception as e:
-        logger.warning(f"Persistence error: {e}")
 
     return {
         "status": "accepted",
@@ -757,6 +867,10 @@ def reset_hardware_state() -> Dict[str, Any]:
     state_obj = get_hardware_state()
     state_obj.reset()
     junction_adapter.reset_run_counter()
+    # The persistence mirror keeps its own occupancy/seq tables, so they are
+    # cleared here too; otherwise a later event would be persisted against a
+    # junction that the authoritative state believes is empty.
+    get_state().reset_hardware_mirror()
     logger.info("hardware.reset requested")
     return {
         "status": "reset",
@@ -782,8 +896,11 @@ def read_block_state() -> Dict[str, Any]:
             signal = "PROCEED" if block_id in decision.get("proceed", []) else "HOLD"
         else:
             signal = "PROCEED"
-        train_id = JUNCTION_TRAIN_MAP.get(block_id)
-        blocks.append({"block_id": block_id, "signal": signal, "train_id": train_id})
+        blocks.append({
+            "block_id": block_id,
+            "signal": signal,
+            "train_id": JUNCTION_TRAIN_MAP[block_id],
+        })
 
     if state_obj.last_event_received_at is None:
         reason = "No hardware data yet - signals are advisory defaults, not a clearance."
@@ -809,6 +926,9 @@ def read_block_state() -> Dict[str, Any]:
         "reason": reason,
         "timestamp": _utc_now(),
         "stale": stale,
+        # Alias kept for the TRD.md response shape; `stale` is the field the
+        # dashboard and the hardware tests read.
+        "is_stale": stale,
     }
     if decision:
         payload["decision"] = {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
-import Icon from '../Icon.jsx'
+import Icon from '../../Icon.jsx'
 
 export default function PriorityMatrixCard() {
   const prefersReducedMotion = useReducedMotion()

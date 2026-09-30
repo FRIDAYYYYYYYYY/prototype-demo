@@ -39,3 +39,21 @@ venv/
 .env
 .env.*
 .pytest_cache/
+
+# Local dev-server process files, logs and stray capture files
+*.pid
+*.out
+*.err
+/pe.txt
+/po.txt
+/lo.txt
+/le.txt
+/bo.txt
+/be.txt
+
+# Ad-hoc browser verification scripts. These import playwright, which is not a
+# declared dependency, so they cannot run from a clean clone. Left out of the
+# repo until they are either wired up as real tests with playwright added to
+# devDependencies, or deleted.
+scripts/verify-junction.mjs
+scripts/verify-loop.mjs

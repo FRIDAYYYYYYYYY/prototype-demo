@@ -39,6 +39,26 @@ def stale_threshold_s() -> float:
         return DEFAULT_STALE_THRESHOLD_S
 
 
+#: Physical junction train -> existing simulator train.  The PRD scenario is
+#: "Train A (low-priority freight) arrives first, Train B (high-priority express)
+#: a few seconds later", so:
+#:
+#: * ``A`` -> ``T305`` Coal Freight 305 (priority 4, weight 1) - the only freight
+#:   in the existing fleet, i.e. the low-priority approach.
+#: * ``B`` -> ``T101`` Rajdhani Express (priority 1, weight 3) - the highest
+#:   priority train in the existing fleet, i.e. the high-priority approach.
+#:
+#: This mapping is the single source of truth for the physical junction trains.
+#: ``SENSOR_CONTRACT`` derives its per-sensor ``train_id`` from it, so the sensor
+#: table and this map can never disagree.  See ``docs/hardware_contract.md`` and
+#: ``docs/junction_decision.md``.
+#:
+#: Nothing is renamed: the mapping is a lookup layer over existing IDs, weights
+#: and priorities.  Note that ``T101`` is also booked *ahead* of ``T305``, so the
+#: existing no-overtaking constraint in ``optimizer.py`` independently enforces
+#: "express before freight" at the junction.
+JUNCTION_TRAIN_MAP: Dict[str, str] = {"A": "T305", "B": "T101"}
+
 # ---------------------------------------------------------------------------
 # Locked sensor -> (logical block, physical train, transition) lookup
 # ---------------------------------------------------------------------------
@@ -47,7 +67,7 @@ SENSOR_CONTRACT: Dict[str, Dict[str, Any]] = {
     "A1": {
         "gpio": 22,
         "block_id": "A",
-        "train_id": "T305",
+        "train_id": JUNCTION_TRAIN_MAP["A"],
         "event": "Train A approaching",
         "transition": "free->occupied",
         "target_state": "occupied",
@@ -56,7 +76,7 @@ SENSOR_CONTRACT: Dict[str, Dict[str, Any]] = {
     "A2": {
         "gpio": 19,
         "block_id": "A",
-        "train_id": "T305",
+        "train_id": JUNCTION_TRAIN_MAP["A"],
         "event": "Train A cleared",
         "transition": "occupied->free",
         "target_state": "free",
@@ -65,7 +85,7 @@ SENSOR_CONTRACT: Dict[str, Dict[str, Any]] = {
     "B1": {
         "gpio": 21,
         "block_id": "B",
-        "train_id": "T408",
+        "train_id": JUNCTION_TRAIN_MAP["B"],
         "event": "Train B approaching",
         "transition": "free->occupied",
         "target_state": "occupied",
@@ -74,7 +94,7 @@ SENSOR_CONTRACT: Dict[str, Dict[str, Any]] = {
     "B2": {
         "gpio": 18,
         "block_id": "B",
-        "train_id": "T408",
+        "train_id": JUNCTION_TRAIN_MAP["B"],
         "event": "Train B cleared",
         "transition": "occupied->free",
         "target_state": "free",
@@ -87,22 +107,6 @@ SENSOR_IDS: List[str] = list(SENSOR_CONTRACT)
 
 #: Logical blocks, in contract order.
 LOGICAL_BLOCK_IDS: List[str] = ["A", "B"]
-
-#: Physical junction train -> existing simulator train.  The PRD scenario is
-#: "Train A (low-priority freight) arrives first, Train B (high-priority express)
-#: a few seconds later", so:
-#:
-#: * ``A`` -> ``T305`` Coal Freight 305 (priority 4, weight 1) - the only freight
-#:   in the existing fleet, i.e. the low-priority approach.
-#: * ``B`` -> ``T101`` Rajdhani Express (priority 1, weight 3) - the highest
-#:   priority train in the existing fleet, i.e. the high-priority approach.
-#:
-#: Nothing is renamed: the mapping is a lookup layer over existing IDs, weights
-#: and priorities.  Note that ``T101`` is also booked *ahead* of ``T305``, so the
-#: existing no-overtaking constraint in ``optimizer.py`` independently enforces
-#: "express before freight" at the junction.  See ``docs/junction_decision.md``
-#: for the measured legacy-vs-CP-SAT comparison and the honest mechanism note.
-JUNCTION_TRAIN_MAP: Dict[str, str] = {"A": "T305", "B": "T101"}
 
 #: Reverse lookup: simulator train -> physical train label.
 TRAIN_TO_JUNCTION: Dict[str, str] = {v: k for k, v in JUNCTION_TRAIN_MAP.items()}

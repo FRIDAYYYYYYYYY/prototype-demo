@@ -1,46 +1,43 @@
 import { useCallback, useEffect, useState } from 'react'
-import Analytics from './components/Analytics.jsx'
+import { Outlet, Route, Routes, useLocation, useNavigate, useOutletContext } from 'react-router-dom'
 import CommandPalette from './components/CommandPalette.jsx'
-import DecisionCore from './components/DecisionCore.jsx'
-import Hardware from './components/Hardware.jsx'
-import LiveJunction from './components/LiveJunction.jsx'
-import Overview from './components/Overview.jsx'
-import Plan from './components/Plan.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import Topbar from './components/Topbar.jsx'
 import Icon from './components/Icon.jsx'
-import { Section } from './components/ui.jsx'
-import { SYSTEM } from './data/core.js'
+import { SYSTEM, pathFor } from './data/core.js'
+import OverviewPage from './pages/OverviewPage.jsx'
+import LivePage from './pages/LivePage.jsx'
+import DecisionPage from './pages/DecisionPage.jsx'
+import AnalyticsPage from './pages/AnalyticsPage.jsx'
+import HardwarePage from './pages/HardwarePage.jsx'
+import PlanPage from './pages/PlanPage.jsx'
+import ArchitecturePage from './pages/ArchitecturePage.jsx'
+import NotFoundPage from './pages/NotFoundPage.jsx'
 
+/**
+ * Persistent chrome around the routed pages.
+ *
+ * The sidebar, topbar and command palette used to sit on one long scrolling
+ * page. They now wrap an <Outlet/>, so the shell (and the live backend poll
+ * inside the topbar) survives navigation while the page content swaps.
+ */
 export default function App() {
-  const [active, setActive] = useState('overview')
   const [menuOpen, setMenuOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const navigate = useNavigate()
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
 
-  const jump = useCallback((id) => {
-    setActive(id)
-    setMenuOpen(false)
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [])
-
-  // Highlight whichever section is currently in the viewport.
-  useEffect(() => {
-    const ids = ['overview', 'live', 'decision', 'analytics', 'hardware', 'plan']
-    const io = new IntersectionObserver(
-      (entries) => {
-        const hit = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
-        if (hit) setActive(hit.target.id)
-      },
-      { rootMargin: '-45% 0px -45% 0px', threshold: [0, 0.25, 0.6] },
-    )
-    ids.forEach((id) => {
-      const el = document.getElementById(id)
-      if (el) io.observe(el)
-    })
-    return () => io.disconnect()
-  }, [])
+  // Section ids are the stable key used by the palette, the topbar button and
+  // the overview hero, so those callers still pass an id while the target is a
+  // route. Closing the drawer here covers every in-app navigation path, since
+  // the sidebar links, the palette and `jump` all funnel through it.
+  const jump = useCallback(
+    (id) => {
+      setMenuOpen(false)
+      navigate(pathFor(id))
+    },
+    [navigate],
+  )
 
   // Global shortcut: Cmd/Ctrl + K opens the command palette.
   useEffect(() => {
@@ -56,7 +53,7 @@ export default function App() {
 
   return (
     <div className="shell">
-      <Sidebar active={active} onNavigate={jump} open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <Sidebar open={menuOpen} onClose={closeMenu} />
 
       <div className="shell__main">
         <Topbar
@@ -66,57 +63,19 @@ export default function App() {
         />
 
         <main className="content">
-          <Overview onJump={jump} />
-
-          <Section
-            id="live"
-            eyebrow="Live junction"
-            icon="track"
-            title="Signal & Sensor Monitor"
-            subtitle="Real-time signal monitoring and sensor event tracking."
-          >
-            <LiveJunction />
-          </Section>
-
-          <Section
-            id="decision"
-            eyebrow="Decision core"
-            icon="cpu"
-            title="Optimization & Validation"
-            subtitle="Conflict resolution, optimization and validation pipeline."
-          >
-            <DecisionCore />
-          </Section>
-
-          <Section
-            id="analytics"
-            eyebrow="Analytics"
-            icon="chart"
-            title="Performance Analytics"
-            subtitle="Performance comparison and traffic analysis metrics."
-          >
-            <Analytics />
-          </Section>
-
-          <Section
-            id="hardware"
-            eyebrow="Hardware bridge"
-            icon="board"
-            title="Hardware Integration"
-            subtitle="Hardware device status and API integration."
-          >
-            <Hardware />
-          </Section>
-
-          <Section
-            id="plan"
-            eyebrow="Roadmap"
-            icon="flag"
-            title="Project Milestones"
-            subtitle="Completed and in-progress development phases."
-          >
-            <Plan />
-          </Section>
+          <Routes>
+            <Route element={<RoutedPage />}>
+              <Route path="/" element={<OverviewPage />} />
+              <Route path="/live" element={<LivePage />} />
+              <Route path="/decision" element={<DecisionPage />} />
+              <Route path="/architecture" element={<ArchitecturePage />} />
+              <Route path="/mindmap" element={<ArchitecturePage />} />
+              <Route path="/analytics" element={<AnalyticsPage />} />
+              <Route path="/hardware" element={<HardwarePage />} />
+              <Route path="/plan" element={<PlanPage />} />
+              <Route path="*" element={<NotFoundPage />} />
+            </Route>
+          </Routes>
 
           <footer className="footer">
             <div className="footer__brand">
@@ -136,4 +95,22 @@ export default function App() {
       />
     </div>
   )
+}
+
+/**
+ * Pathless layout route. It supplies `onJump` to the pages that render
+ * cross-links (the overview hero), and moves focus to the new page heading so
+ * keyboard and screen-reader users land on the content rather than back at the
+ * top of the document after every navigation.
+ */
+function RoutedPage() {
+  const location = useLocation()
+  const jump = useOutletContext()
+
+  useEffect(() => {
+    const heading = document.querySelector('[data-page-title]')
+    if (heading instanceof HTMLElement) heading.focus({ preventScroll: true })
+  }, [location.pathname])
+
+  return <Outlet context={jump} />
 }

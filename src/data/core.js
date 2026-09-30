@@ -13,10 +13,16 @@ export const NAV = [
   { id: 'overview', label: 'Overview', icon: 'grid' },
   { id: 'live', label: 'Live Junction', icon: 'track' },
   { id: 'decision', label: 'Decision Core', icon: 'cpu' },
+  { id: 'architecture', label: 'Architecture Suite', icon: 'zap' },
   { id: 'analytics', label: 'Analytics', icon: 'chart' },
   { id: 'hardware', label: 'Hardware Bridge', icon: 'board' },
   { id: 'plan', label: 'Delivery Plan', icon: 'flag' },
 ]
+
+export function pathFor(id) {
+  if (!id || id === 'overview') return '/'
+  return `/${id.replace(/^#/, '')}`
+}
 
 export const KPIS = [
   {

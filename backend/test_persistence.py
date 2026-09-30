@@ -132,36 +132,33 @@ def test_hardware_event_and_junction_decision_persistence(test_db):
     """Verify /sensor-event persists hardware events and structured junction decisions."""
     client = TestClient(app)
 
-    # Trigger Approach A sensor (A1) with device_ms
-    r1 = client.post(
-        "/sensor-event",
-        json={
-            "block_id": "A1",
-            "state": "occupied",
+    def send(sensor_id, state, seq, offset_ms=0, device_ms=None):
+        payload = {
+            "block_id": sensor_id,
+            "state": state,
             "event_type": "sensor_triggered",
-            "timestamp": 1727602450000,
-            "device_ms": 12050,
-            "source": "sensor_A1",
-            "seq": 101,
-        },
-    )
-    assert r1.status_code == 200
+            "timestamp": 1727602450000 + offset_ms,
+            "source": f"sensor_{sensor_id}",
+            "seq": seq,
+        }
+        if device_ms is not None:
+            payload["device_ms"] = device_ms
+        return client.post("/sensor-event", json=payload)
 
-    # Trigger Approach B sensor (B1) while A is still occupied -> Dual Train Junction Conflict
-    r2 = client.post(
-        "/sensor-event",
-        json={
-            "block_id": "B1",
-            "state": "occupied",
-            "event_type": "sensor_triggered",
-            "timestamp": 1727602455000,
-            "device_ms": 17050,
-            "source": "sensor_B1",
-            "seq": 201,
-        },
-    )
+    # Clear junction state so the test starts from a known, empty junction.
+    assert client.post("/sensor-event/reset").status_code == 200
+
+    # Approach A (the freight, T305) is detected.
+    r1 = send("A1", "occupied", 101, device_ms=12050)
+    assert r1.status_code == 200
+    assert r1.json()["status"] == "accepted"
+
+    # Approach B (the express, T101) arrives before A clears -> real conflict.
+    r2 = send("B1", "occupied", 201, offset_ms=5000, device_ms=17050)
     assert r2.status_code == 200
-    assert r2.json()["action_taken"] == "conflict_evaluated"
+    body = r2.json()
+    assert body["optimizer_triggered"] is True
+    assert body["decision"]["conflict"] is True
 
     engine = test_db["engine"]
     Session = sessionmaker(bind=engine)
@@ -173,20 +170,23 @@ def test_hardware_event_and_junction_decision_persistence(test_db):
         assert events[0].device_ms == 12050
         assert events[1].device_ms == 17050
 
-        # Verify second event triggered junction decision
+        # The advisory aspects persisted for the conflicting event must match the
+        # decision: exactly one approach held, one proceeding.
         dual_event = [e for e in events if e.source == "sensor_B1"][0]
-        assert dual_event.action_taken == "conflict_evaluated"
+        assert {dual_event.signal_a, dual_event.signal_b} == {"PROCEED", "HOLD"}
 
-        # Check junction_decisions table
+        # Structured 2-train numbers captured for that conflict.
         decisions = session.scalars(
             select(JunctionDecision).where(JunctionDecision.hardware_event_id == dual_event.id)
         ).all()
         assert len(decisions) == 1
 
         jd = decisions[0]
-        assert jd.weight_a == 3  # T101 Rajdhani Express weight
-        assert jd.weight_b == 2  # T204 Intercity Passenger weight
+        # A is the freight T305 (weight 1); B is the express T101 (weight 3).
+        assert jd.weight_a == 1
+        assert jd.weight_b == 3
         assert jd.proceed_train in ("A", "B")
         assert jd.hold_train in ("A", "B")
+        assert jd.proceed_train != jd.hold_train
         assert jd.wall_time_ms is not None
         assert jd.objective_value is not None

@@ -619,14 +619,36 @@ class SimulationState:
         self.sensor_last_times: Dict[str, float] = {}
         self.last_sensor_event_time: Optional[float] = None
         self.hardware_state: Dict[str, Dict[str, Any]] = {
-            "A": {"occupied": False, "train_id": "T101"},
-            "B": {"occupied": False, "train_id": "T204"},
+            # The authoritative physical mapping lives in hardware_state.py:
+            # A is the freight T305, B is the express T101.  It is duplicated
+            # here (rather than imported) only so this mirror stays a pure
+            # persistence feed; backend/test_hardware.py asserts both agree.
+            "A": {"occupied": False, "train_id": "T305"},
+            "B": {"occupied": False, "train_id": "T101"},
         }
         self.hardware_arrival_times: Dict[str, Optional[int]] = {"A": None, "B": None}
         self.hardware_signals: Dict[str, str] = {"A": "PROCEED", "B": "PROCEED"}
         self.hardware_reason: str = "Junction free. No conflicting movements."
         self.last_junction_decision: Optional[Dict[str, Any]] = None
         return self
+
+    def reset_hardware_mirror(self) -> None:
+        """Clear only the hardware/persistence mirror state.
+
+        Deliberately separate from :meth:`reset`, which also discards injected
+        disruptions and the optimized plan.  ``POST /sensor-event/reset`` needs
+        to clear the junction without disturbing the corridor simulation.
+        """
+        self.sensor_seqs.clear()
+        self.sensor_last_times.clear()
+        self.last_sensor_event_time = None
+        for track in self.hardware_state.values():
+            track["occupied"] = False
+        for block_id in self.hardware_arrival_times:
+            self.hardware_arrival_times[block_id] = None
+        self.hardware_signals = {"A": "PROCEED", "B": "PROCEED"}
+        self.hardware_reason = "Junction free. No conflicting movements."
+        self.last_junction_decision = None
 
     def process_sensor_event(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process an incoming GPIO sensor event with seq-based idempotency."""

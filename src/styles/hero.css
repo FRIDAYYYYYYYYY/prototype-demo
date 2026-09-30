@@ -256,11 +256,11 @@
   font-variant-numeric: tabular-nums;
 }
 .kpi__delta.is-up {
-  color: var(--success);
+  color: var(--success-ink);
   background: var(--success-soft);
 }
 .kpi__delta.is-down {
-  color: var(--primary);
+  color: var(--primary-ink);
   background: var(--primary-soft);
 }
 .kpi__delta.is-down svg {
@@ -307,7 +307,7 @@
 .hero__foot svg {
   flex-shrink: 0;
   margin-top: 1px;
-  color: var(--primary);
+  color: var(--primary-ink);
 }
 
 /* --- ML advisory strip ---------- */
