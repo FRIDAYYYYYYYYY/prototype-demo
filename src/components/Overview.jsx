@@ -1,25 +1,24 @@
 import Icon from './Icon.jsx'
 import { KPIS, SYSTEM } from '../data/core.js'
 import { CONFLICT } from '../data/decision.js'
-import { useCountUp, usePolledEndpoint, useReveal } from '../hooks.js'
+import { usePolledEndpoint } from '../hooks.js'
 import { toLiveKpis } from '../adapters.js'
 import { Badge, Button, Sparkline, StatusDot } from './ui.jsx'
+import { useCountUpNumber, useStaggerEntrance } from '../motion/hooks.js'
 import api from '../api.js'
 
 function KpiCard({ kpi, index }) {
-  const [ref, visible] = useReveal()
-  const shown = useCountUp(kpi.value, { decimals: kpi.decimals, start: visible })
+  const shown = useCountUpNumber(kpi.value, { decimals: kpi.decimals })
 
   return (
     <article
-      ref={ref}
-      className={`kpi tone-${kpi.tone} ${visible ? 'is-visible' : ''}`}
+      className={`kpi tone-${kpi.tone} motion-item`}
       style={{ '--i': index }}
     >
       <div className="kpi__top">
         <span className="kpi__label">{kpi.label}</span>
         <span className={`kpi__delta ${kpi.trend >= 0 ? 'is-up' : 'is-down'}`}>
-          <Icon name={kpi.trend >= 0 ? 'arrow' : 'arrow'} size={12} />
+          <Icon name="arrow" size={12} />
           {Math.abs(kpi.trend)}%
         </span>
       </div>
@@ -39,9 +38,7 @@ function KpiCard({ kpi, index }) {
 }
 
 /**
- * Live corridor KPIs, falling back to the recorded static cards when the
- * backend is unreachable. A single-value sparkline is used for live cards
- * because there is no history until persistence is switched on.
+ * Live corridor KPIs, falling back to recorded static values when backend is offline.
  */
 function liveCards(live) {
   if (!live) return KPIS.map((k) => ({ ...k, trend: 0 }))
@@ -54,17 +51,18 @@ function liveCards(live) {
 }
 
 export default function Overview({ onJump }) {
-  // Live corridor results and the Phase F advisory insight.
   const { data: results } = usePolledEndpoint(api.results, 3000)
   const { data: ml } = usePolledEndpoint(api.mlInsights, 5000)
 
+  const containerRef = useStaggerEntrance({ selector: '.motion-item', delay: 50 })
   const live = toLiveKpis(results)
   const insight = ml?.insights ?? null
   const cards = liveCards(live)
 
   return (
-    <div className="overview">
-      <section className="hero" id="overview">
+    <div className="overview" ref={containerRef}>
+      <section className="hero motion-item" id="overview">
+        <div className="hero__glow-orb" />
         <div className="hero__copy">
           <span className="hero__eyebrow">
             <Icon name="pulse" size={15} />
@@ -111,19 +109,19 @@ export default function Overview({ onJump }) {
           </div>
           <div className="hero__decision">
             <span className="hero__decisionlabel">Recommendation</span>
-            <strong className="hero__decisiontext">PROCEED Train A</strong>
-            <span className="hero__decisionsub">HOLD Train B · 2.1 min delay</span>
+            <strong className="hero__decisiontext">PROCEED Train A (Express)</strong>
+            <span className="hero__decisionsub">HOLD Train B (Freight) · 2.1 min delay</span>
           </div>
           <div className="hero__bars">
             <div className="hero__bar">
               <span>Legacy weighted delay</span>
               <div className="track"><i className="fill is-legacy" style={{ width: '100%' }} /></div>
-              <b>9.2</b>
+              <b className="mono">9.2 min</b>
             </div>
             <div className="hero__bar">
               <span>CP-SAT weighted delay</span>
               <div className="track"><i className="fill is-cpsat" style={{ width: '50%' }} /></div>
-              <b>4.6</b>
+              <b className="mono">4.6 min</b>
             </div>
           </div>
           <p className="hero__foot">
@@ -140,7 +138,7 @@ export default function Overview({ onJump }) {
       </div>
 
       {insight && (
-        <div className="mlstrip">
+        <div className="mlstrip motion-item">
           <div className="mlstrip__head">
             <Icon name="cpu" size={16} />
             <strong>ML advisory</strong>

@@ -1,57 +1,150 @@
+import { useState, useRef, useEffect } from 'react'
+import { animate, stagger } from 'animejs'
 import { CONFLICT, CONSTRAINTS, PIPELINE, RECOMMENDATION, VALIDATION } from '../data/decision.js'
 import Icon from './Icon.jsx'
 import { Badge, Card, Meter, PanelTitle, Stat } from './ui.jsx'
+import { useCountUpNumber, useStaggerEntrance } from '../motion/hooks.js'
+import { DURATION, EASING, isReducedMotion } from '../motion/tokens.js'
 
-function Comparison() {
-  const rows = [
-    { label: 'Weighted objective', legacy: CONFLICT.legacy.weighted, cpsat: CONFLICT.cpsat.weighted, max: 10, better: 'lower' },
-    { label: 'Delay · Train A', legacy: CONFLICT.legacy.delayA, cpsat: CONFLICT.cpsat.delayA, max: 5, better: 'lower' },
-    { label: 'Delay · Train B', legacy: CONFLICT.legacy.delayB, cpsat: CONFLICT.cpsat.delayB, max: 5, better: 'lower' },
-  ]
+function CaseComparison() {
+  const [activeCase, setActiveCase] = useState('case3') // 'case2' | 'case3'
+  const isCase3 = activeCase === 'case3'
+
+  const weightedVal = isCase3 ? CONFLICT.cpsat.weighted : CONFLICT.legacy.weighted
+  const animatedWeighted = useCountUpNumber(weightedVal, { decimals: 1 })
+
+  const delayAVal = isCase3 ? CONFLICT.cpsat.delayA : CONFLICT.legacy.delayA
+  const animatedDelayA = useCountUpNumber(delayAVal, { decimals: 1 })
+
+  const delayBVal = isCase3 ? CONFLICT.cpsat.delayB : CONFLICT.legacy.delayB
+  const animatedDelayB = useCountUpNumber(delayBVal, { decimals: 1 })
+
+  const barRef = useRef(null)
+
+  useEffect(() => {
+    if (!barRef.current || isReducedMotion()) return
+    const bars = barRef.current.querySelectorAll('.cmp__bar-fill')
+    animate(bars, {
+      scaleX: [0.85, 1],
+      opacity: [0.7, 1],
+      duration: DURATION.base,
+      ease: EASING.appleSmooth,
+    })
+  }, [activeCase])
 
   return (
-    <div className="cmp">
-      <div className="cmp__legend">
-        <span className="cmp__key">
-          <i className="dot is-legacy" /> Legacy first-arrival
-        </span>
-        <span className="cmp__key">
-          <i className="dot is-cpsat" /> CP-SAT optimised
-        </span>
+    <div className="case-cmp" ref={barRef}>
+      {/* Case Toggle Selector */}
+      <div className="case-toggle">
+        <button
+          type="button"
+          className={`case-toggle__btn ${!isCase3 ? 'is-active' : ''}`}
+          onClick={() => setActiveCase('case2')}
+        >
+          <span className="case-toggle__tag mono">CASE 2</span>
+          <span className="case-toggle__title">Legacy FCFS (First-Arrival)</span>
+        </button>
+        <button
+          type="button"
+          className={`case-toggle__btn ${isCase3 ? 'is-active is-cpsat' : ''}`}
+          onClick={() => setActiveCase('case3')}
+        >
+          <span className="case-toggle__tag mono">CASE 3</span>
+          <span className="case-toggle__title">CP-SAT Optimised</span>
+          <span className="case-toggle__badge">-50% Delay</span>
+        </button>
       </div>
-      {rows.map((r) => (
-        <div key={r.label} className="cmp__row">
-          <span className="cmp__label">{r.label}</span>
+
+      {/* Case Overview Banner */}
+      <div className={`case-banner ${isCase3 ? 'is-cpsat-banner' : 'is-legacy-banner'}`}>
+        <div className="case-banner__head">
+          <Badge tone={isCase3 ? 'teal' : 'danger'} dot pulse={!isCase3}>
+            {isCase3 ? 'CP-SAT Priority Scheduling' : 'First-Come First-Served Baseline'}
+          </Badge>
+          <span className="case-banner__winner mono">
+            PROCEED: {isCase3 ? 'Train A (Express)' : 'Train B (Freight)'}
+          </span>
+        </div>
+        <p className="case-banner__desc">
+          {isCase3
+            ? 'High-priority Express (class 1) cleared first with 0.4 min delay. Freight slotted into the 210 s headway gap.'
+            : 'Low-priority Freight arrives 38 s earlier and locks the single-line junction. High-priority Express held outside block.'}
+        </p>
+      </div>
+
+      {/* Metric comparison bars */}
+      <div className="cmp">
+        <div className="cmp__row">
+          <div className="cmp__info">
+            <span className="cmp__label">Passenger-Weighted Delay</span>
+            <small className="cmp__hint">Priority-scaled objective penalty</small>
+          </div>
           <div className="cmp__bars">
             <div className="cmp__bar">
-              <i className="fill is-legacy" style={{ width: `${(r.legacy / r.max) * 100}%` }} />
-            </div>
-            <div className="cmp__bar">
-              <i className="fill is-cpsat" style={{ width: `${(r.cpsat / r.max) * 100}%` }} />
+              <div
+                className={`cmp__bar-fill ${isCase3 ? 'is-cpsat' : 'is-legacy'}`}
+                style={{ width: `${(weightedVal / 10) * 100}%` }}
+              />
             </div>
           </div>
           <span className="cmp__vals mono">
-            {r.legacy} → <b>{r.cpsat}</b>
+            <b>{animatedWeighted}</b> min
           </span>
         </div>
-      ))}
+
+        <div className="cmp__row">
+          <div className="cmp__info">
+            <span className="cmp__label">Train A Delay (Express · Prio 1)</span>
+            <small className="cmp__hint">High passenger volume</small>
+          </div>
+          <div className="cmp__bars">
+            <div className="cmp__bar">
+              <div
+                className={`cmp__bar-fill ${isCase3 ? 'is-cpsat' : 'is-legacy'}`}
+                style={{ width: `${(delayAVal / 5) * 100}%` }}
+              />
+            </div>
+          </div>
+          <span className="cmp__vals mono">
+            <b>{animatedDelayA}</b> min
+          </span>
+        </div>
+
+        <div className="cmp__row">
+          <div className="cmp__info">
+            <span className="cmp__label">Train B Delay (Freight · Prio 3)</span>
+            <small className="cmp__hint">Low passenger penalty</small>
+          </div>
+          <div className="cmp__bars">
+            <div className="cmp__bar">
+              <div
+                className={`cmp__bar-fill ${isCase3 ? 'is-cpsat' : 'is-legacy'}`}
+                style={{ width: `${(delayBVal / 5) * 100}%` }}
+              />
+            </div>
+          </div>
+          <span className="cmp__vals mono">
+            <b>{animatedDelayB}</b> min
+          </span>
+        </div>
+      </div>
     </div>
   )
 }
 
 function Recommendation() {
   return (
-    <Card className="rec">
+    <Card className="rec motion-item">
       <PanelTitle icon="spark" title="Recommendation" meta={`confidence ${RECOMMENDATION.confidence}%`} tone="teal" />
       <div className="rec__headline">
         <span className="rec__go">
           <i /> PROCEED
         </span>
-        <span className="rec__split">Train A</span>
+        <span className="rec__split">Train A (Express)</span>
         <span className="rec__hold">
           <i /> HOLD
         </span>
-        <span className="rec__split">Train B</span>
+        <span className="rec__split">Train B (Freight)</span>
       </div>
       <Meter value={RECOMMENDATION.confidence} tone="teal" label="Confidence" right={`${RECOMMENDATION.confidence}%`} />
       <ul className="rec__reasons">
@@ -70,11 +163,13 @@ function Recommendation() {
   )
 }
 
-
 export default function DecisionCore() {
+  const containerRef = useStaggerEntrance({ selector: '.motion-item', delay: 70 })
+
   return (
-    <div className="decision">
-      <Card className="decision__conflict">
+    <div className="decision" ref={containerRef}>
+      {/* Active Conflict Header Card */}
+      <Card className="decision__conflict motion-item">
         <PanelTitle icon="warn" title="Active conflict" meta={CONFLICT.detectedAt} tone="danger" />
         <div className="conflict__head">
           <Badge tone="danger" dot pulse>
@@ -115,41 +210,34 @@ export default function DecisionCore() {
         </p>
       </Card>
 
-      <Card className="decision__compare">
-        <PanelTitle icon="chart" title="Legacy vs CP-SAT" meta="same events · two rules" tone="indigo" />
-        <Comparison />
-        <div className="decision__notes">
-          <div className="dnote tone-slate">
-            <strong>{CONFLICT.legacy.rule}</strong>
-            <p>{CONFLICT.legacy.note}</p>
-          </div>
-          <div className="dnote tone-teal">
-            <strong>CP-SAT weighted objective</strong>
-            <p>{CONFLICT.cpsat.note}</p>
-          </div>
-        </div>
+      {/* Case 2 vs Case 3 Animated Decision Comparison */}
+      <Card className="decision__compare motion-item">
+        <PanelTitle icon="chart" title="Case 2 vs Case 3: Algorithmic Rigor" meta="FCFS vs CP-SAT" tone="indigo" />
+        <CaseComparison />
       </Card>
 
-      <Card className="decision__pipeline">
-        <PanelTitle icon="bolt" title="Decision pipeline" meta="7 stages" tone="violet" />
+      {/* 7-Stage Decision Pipeline */}
+      <Card className="decision__pipeline motion-item">
+        <PanelTitle icon="bolt" title="Decision pipeline" meta="7 stages · deterministic" tone="violet" />
         <ol className="pipeline">
-          {PIPELINE.map((p) => (
-            <li key={p.step} className={`pstep is-${p.state}`}>
+          {PIPELINE.map((p, idx) => (
+            <li key={p.step} className={`pstep is-${p.state}`} style={{ '--i': idx }}>
               <span className="pstep__marker" />
               <div className="pstep__body">
                 <strong>{p.step}</strong>
                 <small>{p.detail}</small>
               </div>
               <Badge tone={p.state === 'done' ? 'success' : 'warn'} dot={p.state !== 'done'}>
-                {p.state === 'done' ? 'OK' : 'LIVE'}
+                {p.state === 'done' ? 'PASS' : 'LIVE'}
               </Badge>
             </li>
           ))}
         </ol>
       </Card>
 
-      <Card className="decision__constraints">
-        <PanelTitle icon="check" title="CP-SAT constraints" meta="5 active" tone="cyan" />
+      {/* Safety & Physical Constraints */}
+      <Card className="decision__constraints motion-item">
+        <PanelTitle icon="check" title="CP-SAT safety constraints" meta="5 active" tone="cyan" />
         <ul className="clist">
           {CONSTRAINTS.map((c) => (
             <li key={c.id}>
@@ -161,7 +249,8 @@ export default function DecisionCore() {
         </ul>
       </Card>
 
-      <Card className="decision__validate">
+      {/* Independent Validator */}
+      <Card className="decision__validate motion-item">
         <PanelTitle icon="shield" title="Independent validation" meta={VALIDATION.verdict} tone="emerald" />
         <div className="vlist">
           {VALIDATION.checks.map((c) => (

@@ -1,6 +1,7 @@
 import Icon from './Icon.jsx'
 import { Badge, Card, PanelTitle } from './ui.jsx'
 import { usePolledEndpoint } from '../hooks.js'
+import { useCountUpNumber, useStaggerEntrance } from '../motion/hooks.js'
 import api from '../api.js'
 
 const FALLBACK_FORECASTS = [
@@ -54,20 +55,13 @@ const FALLBACK_FORECASTS = [
   },
 ]
 
-function formatSeconds(sec) {
-  if (sec == null || isNaN(sec)) return '—'
-  const s = Number(sec)
-  const min = Math.floor(s / 60)
-  const remSec = Math.round(s % 60)
-  if (min > 0) {
-    return `${min}m ${remSec}s (${s.toFixed(1)}s)`
-  }
-  return `${s.toFixed(1)}s`
-}
-
 export function EtaCard({ item }) {
   const method = item.method || 'physics'
   const isMl = method !== 'physics'
+
+  const animatedBaseline = useCountUpNumber(item.baseline_eta_s, { decimals: 1 })
+  const animatedMl = useCountUpNumber(item.ml_eta_s, { decimals: 1 })
+  const animatedVariance = useCountUpNumber(item.variance_vs_baseline_s, { decimals: 1 })
 
   // Method badge config according to showcase contract
   const methodBadge = {
@@ -82,8 +76,16 @@ export function EtaCard({ item }) {
     Freight: 'warn',
   }[item.type] || 'teal'
 
+  const formatMinSec = (secStr) => {
+    const s = parseFloat(secStr)
+    if (isNaN(s)) return '—'
+    const min = Math.floor(s / 60)
+    const rem = (s % 60).toFixed(1)
+    return min > 0 ? `${min}m ${rem}s` : `${rem}s`
+  }
+
   return (
-    <div className={`etacard tone-${trainTone}`}>
+    <div className={`etacard tone-${trainTone} motion-item`}>
       <div className="etacard__head">
         <div className="etacard__train">
           <span className="etacard__id mono">{item.train_id}</span>
@@ -102,8 +104,8 @@ export function EtaCard({ item }) {
       <div className={`etacard__metrics ${isMl ? 'is-ml' : 'is-physics'}`}>
         <div className="etacard__col">
           <span className="etacard__col-label">Physics ETA</span>
-          <strong className="etacard__col-val mono">{formatSeconds(item.baseline_eta_s)}</strong>
-          <small className="etacard__col-sub">distance / speed</small>
+          <strong className="etacard__col-val mono">{formatMinSec(animatedBaseline)}</strong>
+          <small className="etacard__col-sub">({animatedBaseline}s kinematic)</small>
         </div>
 
         {isMl && (
@@ -112,18 +114,18 @@ export function EtaCard({ item }) {
             <div className="etacard__col">
               <span className="etacard__col-label">ML ETA</span>
               <strong className="etacard__col-val etacard__col-val--ml mono">
-                {formatSeconds(item.ml_eta_s)}
+                {formatMinSec(animatedMl)}
               </strong>
-              <small className="etacard__col-sub">gradient boosting</small>
+              <small className="etacard__col-sub">({animatedMl}s gradient boost)</small>
             </div>
 
             <div className="etacard__divider" />
             <div className="etacard__col etacard__col--delta">
               <span className="etacard__col-label">Variance</span>
-              <span className={`etacard__delta mono ${item.variance_vs_baseline_s > 0 ? 'is-delay' : ''}`}>
-                {item.variance_vs_baseline_s >= 0 ? `+${item.variance_vs_baseline_s}` : item.variance_vs_baseline_s}s
+              <span className={`etacard__delta mono ${Number(animatedVariance) > 0 ? 'is-delay' : ''}`}>
+                {Number(animatedVariance) >= 0 ? `+${animatedVariance}` : animatedVariance}s
               </span>
-              <small className="etacard__col-sub">vs baseline</small>
+              <small className="etacard__col-sub">non-linear brake</small>
             </div>
           </>
         )}
@@ -139,13 +141,14 @@ export function EtaCard({ item }) {
 
 export default function EtaForecast() {
   const { data: etaData } = usePolledEndpoint(api.etaForecast, 3000)
+  const containerRef = useStaggerEntrance({ selector: '.motion-item', delay: 60 })
 
   const forecasts = etaData?.forecasts || FALLBACK_FORECASTS
   const method = etaData?.method || 'ml-synthetic'
   const isLive = Boolean(etaData)
 
   return (
-    <Card className="etaforecast">
+    <Card className="etaforecast motion-item" ref={containerRef}>
       <PanelTitle
         icon="pulse"
         title="ML ETA Forecast"
