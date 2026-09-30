@@ -20,7 +20,10 @@ from __future__ import annotations
 
 import datetime
 import os
+import sys
 from typing import Any, Dict, List, Optional
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,11 +48,14 @@ from simulator import (
 )
 from validator import summarise, validate_schedule
 
-# The Vite dev server (5173) and the Vite preview server (4173) are allowed to
-# talk to this API.  Keep the list explicit instead of using "*".
+# The Vite dev server and preview server origins are allowed to talk to this API.
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
     "http://localhost:4173",
     "http://127.0.0.1:4173",
 ]
@@ -75,6 +81,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

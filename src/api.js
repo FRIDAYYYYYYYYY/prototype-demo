@@ -1,8 +1,9 @@
 import axios from 'axios'
 
-/** Backend base URL: override with VITE_API_BASE_URL in a local .env file. */
+/** Backend base URL: defaults to LAN IP 10.253.77.237:8000 or current hostname */
+const DEFAULT_HOST = typeof window !== 'undefined' && window.location?.hostname ? window.location.hostname : '10.253.77.237'
 export const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+  import.meta.env.VITE_API_BASE_URL || `http://${DEFAULT_HOST}:8000`
 ).replace(/\/+$/, '')
 
 export const api = axios.create({
