@@ -56,6 +56,7 @@ export const api = {
   persistence: () => request('/persistence'),
 
   // Phase F - ML advisory layer
+  etaForecast: () => request('/eta-forecast'),
   mlStatus: () => request('/ml/status'),
   mlInsights: () => request('/ml/insights', { method: 'POST' }),
 }
@@ -66,6 +67,7 @@ export const getHealth = api.health
 export const getState = api.state
 export const getResults = api.results
 export const getScenarios = api.scenarios
+export const getEtaForecast = api.etaForecast
 export const injectDisruption = api.disrupt
 export const runOptimizer = api.optimize
 export const resetSimulation = api.reset

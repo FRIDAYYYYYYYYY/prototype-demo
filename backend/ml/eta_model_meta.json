@@ -1,0 +1,17 @@
+{
+  "data_source": "synthetic",
+  "n_rows": 5000,
+  "distance_min": 500.0,
+  "distance_max": 25000.0,
+  "speed_min": 10.0,
+  "speed_max": 45.0,
+  "mae_model": 18.761,
+  "mae_baseline": 20.644,
+  "r2_model": 0.994,
+  "r2_baseline": 0.9941,
+  "features": [
+    "distance_m",
+    "speed_mps",
+    "physics_eta"
+  ]
+}

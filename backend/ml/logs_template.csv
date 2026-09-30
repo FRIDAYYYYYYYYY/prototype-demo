@@ -1,0 +1,4 @@
+distance_m,speed_mps,actual_time_s,train_type,headway_s,signal_state
+0.5,0.5,1.0,Express,180.0,PROCEED
+0.5,0.35,1.429,Passenger,240.0,CAUTION
+0.5,0.2,2.5,Freight,300.0,PROCEED

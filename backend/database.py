@@ -281,6 +281,7 @@ def persist_hardware_event(
             if session is None:
                 return None
 
+            dev_ms = event_payload.get("device_ms")
             hw_event = HardwareEvent(
                 source=str(event_payload.get("source", "")),
                 seq=int(event_payload.get("seq", 0)),
@@ -289,6 +290,7 @@ def persist_hardware_event(
                 event_type=str(event_payload.get("event_type", "sensor_triggered")),
                 client_ip=client_ip,
                 event_timestamp=int(event_payload.get("timestamp", 0)),
+                device_ms=int(dev_ms) if dev_ms is not None else None,
                 action_taken=action_taken,
                 signal_a=signals.get("A", "PROCEED"),
                 signal_b=signals.get("B", "PROCEED"),

@@ -129,6 +129,7 @@ class SensorEventPayload(BaseModel):
     state: str = Field(..., description="Occupancy state: 'occupied' or 'free'")
     event_type: str = Field(default="sensor_triggered", description="Event type")
     timestamp: int = Field(..., description="Unix epoch timestamp in milliseconds")
+    device_ms: Optional[int] = Field(default=None, description="ESP32 device monotonic timestamp in milliseconds from millis()")
     source: str = Field(..., description="Sensor source identifier, e.g. 'sensor_A1'")
     seq: int = Field(..., description="Strictly monotonic sequence number per source")
 
@@ -521,9 +522,11 @@ def receive_sensor_event(payload: SensorEventPayload, request: Request) -> Dict[
     return result
 
 
-@app.get("/block-state", summary="Advisory signal polling endpoint for hardware")
-def read_block_state() -> Dict[str, Any]:
-    return get_state().get_hardware_block_state()
+@app.get("/block-state")
+def read_block_state():
+    result = get_state().get_hardware_block_state()
+    print("BLOCK STATE DEBUG:", repr(result))
+    return result
 
 
 @app.get("/eta-forecast", summary="Advisory ETA predictions to junction")

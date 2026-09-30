@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { toEventStream, toSignals, REPLAYS } from '../adapters.js'
 import Corridor from './Corridor.jsx'
+import EtaForecast from './EtaForecast.jsx'
 import Icon from './Icon.jsx'
 import { useAction, usePolledEndpoint } from '../hooks.js'
 import { Badge, Card, PanelTitle, StatusDot } from './ui.jsx'
@@ -147,6 +148,8 @@ export default function LiveJunction() {
           ))}
         </ul>
       </Card>
+
+      <EtaForecast />
     </div>
   )
 }

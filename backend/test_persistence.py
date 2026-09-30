@@ -132,7 +132,7 @@ def test_hardware_event_and_junction_decision_persistence(test_db):
     """Verify /sensor-event persists hardware events and structured junction decisions."""
     client = TestClient(app)
 
-    # Trigger Approach A sensor (A1)
+    # Trigger Approach A sensor (A1) with device_ms
     r1 = client.post(
         "/sensor-event",
         json={
@@ -140,6 +140,7 @@ def test_hardware_event_and_junction_decision_persistence(test_db):
             "state": "occupied",
             "event_type": "sensor_triggered",
             "timestamp": 1727602450000,
+            "device_ms": 12050,
             "source": "sensor_A1",
             "seq": 101,
         },
@@ -154,6 +155,7 @@ def test_hardware_event_and_junction_decision_persistence(test_db):
             "state": "occupied",
             "event_type": "sensor_triggered",
             "timestamp": 1727602455000,
+            "device_ms": 17050,
             "source": "sensor_B1",
             "seq": 201,
         },
@@ -166,6 +168,10 @@ def test_hardware_event_and_junction_decision_persistence(test_db):
     with Session() as session:
         events = session.scalars(select(HardwareEvent).order_by(HardwareEvent.id)).all()
         assert len(events) >= 2
+
+        # Verify device_ms was persisted
+        assert events[0].device_ms == 12050
+        assert events[1].device_ms == 17050
 
         # Verify second event triggered junction decision
         dual_event = [e for e in events if e.source == "sensor_B1"][0]

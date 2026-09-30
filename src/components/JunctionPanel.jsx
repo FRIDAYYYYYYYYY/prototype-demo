@@ -120,6 +120,7 @@ export default function JunctionPanel() {
           state: sensor.state,
           event_type: 'sensor_triggered',
           timestamp: clockRef.current,
+          device_ms: Math.max(0, clockRef.current - EPOCH_BASE_MS),
           source,
           seq: seqRef.current[source],
         })

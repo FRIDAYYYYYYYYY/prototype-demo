@@ -165,6 +165,7 @@ class HardwareEvent(Base):
     event_type: Mapped[str] = mapped_column(String(32), nullable=False)
     client_ip: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     event_timestamp: Mapped[int] = mapped_column(Integer, nullable=False)  # Milliseconds epoch
+    device_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # Monotonic ms from ESP32 millis()
     action_taken: Mapped[str] = mapped_column(String(32), nullable=False)
     signal_a: Mapped[str] = mapped_column(String(16), nullable=False)
     signal_b: Mapped[str] = mapped_column(String(16), nullable=False)

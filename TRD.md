@@ -75,6 +75,7 @@ Hardware publishes debounced occupancy transitions. Includes strict sequence num
   "state": "occupied",
   "event_type": "sensor_triggered",
   "timestamp": 1732500000000,
+  "device_ms": 142050,
   "source": "sensor_A1",
   "seq": 1042
 }

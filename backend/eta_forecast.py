@@ -27,6 +27,7 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error
 
+from ml.eta_predictor import get_model_and_meta, predict_eta
 from simulator import BLOCKS, TRAINS
 
 logger = logging.getLogger("train_traffic.eta_forecast")
@@ -118,12 +119,28 @@ def generate_synthetic_dataset(
     return X, actual_time_s, baseline_time_s
 
 
-def get_or_train_model() -> Tuple[Optional[GradientBoostingRegressor], Dict[str, Any]]:
-    """Initialize and train the Gradient Boosting Regressor singleton on synthetic data."""
+def get_or_train_model() -> Tuple[Optional[Any], Dict[str, Any]]:
+    """Initialize and return ETA model and evaluation metrics."""
     global _MODEL, _METRICS
     if os.environ.get("FORCE_ETA_FAIL") == "1":
         logger.warning("FORCE_ETA_FAIL is enabled; simulating model failure.")
         return None, {"benchmark": "synthetic, planted effects", "fallback": True, "error": "Forced model failure"}
+
+    model, meta = get_model_and_meta()
+    if model is not None and meta is not None:
+        metrics = {
+            "benchmark": "synthetic, planted effects" if meta.get("data_source") == "synthetic" else "real sensor telemetry",
+            "baseline_mae_seconds": meta.get("mae_baseline", 0.0),
+            "ml_mae_seconds": meta.get("mae_model", 0.0),
+            "mae_improvement_pct": round(
+                ((meta.get("mae_baseline", 1.0) - meta.get("mae_model", 1.0)) / max(meta.get("mae_baseline", 1.0), 0.001)) * 100.0,
+                1,
+            ),
+            "test_samples": meta.get("n_rows", 5000),
+            "r2_model": meta.get("r2_model"),
+            "r2_baseline": meta.get("r2_baseline"),
+        }
+        return model, metrics
 
     if _MODEL is not None and _METRICS:
         return _MODEL, _METRICS
@@ -156,10 +173,6 @@ def get_or_train_model() -> Tuple[Optional[GradientBoostingRegressor], Dict[str,
             "mae_improvement_pct": round(((baseline_mae - ml_mae) / baseline_mae) * 100.0, 1),
             "test_samples": len(y_test),
         }
-        logger.info(
-            f"ETA Forecast Model Trained: Baseline MAE={_METRICS['baseline_mae_seconds']}s, "
-            f"ML MAE={_METRICS['ml_mae_seconds']}s ({_METRICS['mae_improvement_pct']}% improvement)"
-        )
         return _MODEL, _METRICS
     except Exception as exc:
         logger.warning(f"Failed to train ETA model, activating baseline fallback: {exc}")
@@ -177,16 +190,20 @@ def get_eta_forecasts(state: Any = None) -> Dict[str, Any]:
     """Compute advisory ETA forecasts for all trains approaching the corridor junction.
 
     Pulls fleet data directly from backend/simulator.py (TRAINS and BLOCKS).
-    Returns baseline ETA (distance / assumed speed) and ML forecast (gradient boosting).
-    Guaranteed fail-safe: if ML fails, returns baseline ETA for all trains.
+    Returns baseline ETA (distance / assumed speed) and ML forecast via predict_eta.
+    Guaranteed fail-safe: if ML fails, returns baseline ETA for all trains with method='physics'.
     """
     model, metrics = get_or_train_model()
+    _, meta = get_model_and_meta()
 
     # Source corridor approach block length from simulator.BLOCKS (Block 1 length = 14.0 km)
     approach_block = BLOCKS[0]
     approach_dist_km = float(approach_block["length_km"])
+    distance_m = approach_dist_km * 1000.0
 
     forecasts: List[Dict[str, Any]] = []
+
+    overall_method = "physics"
 
     for train in TRAINS:
         train_id = train["id"]
@@ -209,9 +226,6 @@ def get_eta_forecasts(state: Any = None) -> Dict[str, Any]:
         else:
             assumed_speed_kmh = round(raw_timetable_speed_kmh, 1)
 
-        hour = 10  # 10:00 AM simulation start horizon
-        peak_flag = 1 if hour in PEAK_HOURS else 0
-
         # Extract prior delay from simulator state if available
         prior_delay = 0.0
         if state is not None:
@@ -222,21 +236,23 @@ def get_eta_forecasts(state: Any = None) -> Dict[str, Any]:
             except Exception:
                 prior_delay = 0.0
 
-        # Physics baseline (seconds)
-        baseline_eta_s = round((approach_dist_km / max(assumed_speed_kmh, 1.0)) * 3600.0, 1)
+        # Predict ETA using ML predictor with honest fallback
+        speed_mps = assumed_speed_kmh / 3.6
+        if os.environ.get("FORCE_ETA_FAIL") == "1" or model is None:
+            baseline_eta_s = round((approach_dist_km / max(assumed_speed_kmh, 1.0)) * 3600.0, 1)
+            ml_eta_s = baseline_eta_s
+            method = "physics"
+        else:
+            ml_eta_s, baseline_eta_s, method = predict_eta(
+                distance_m=distance_m,
+                speed_mps=speed_mps,
+                train_type=train_type,
+                prior_delay_min=prior_delay,
+            )
+            ml_eta_s = round(ml_eta_s, 1)
+            baseline_eta_s = round(baseline_eta_s, 1)
 
-        # ML Forecast with fail-safe fallback
-        ml_eta_s = baseline_eta_s
-        if model is not None:
-            try:
-                class_code = CLASS_MAPPING.get(train_type, 1)
-                feat = np.array([[class_code, approach_dist_km, assumed_speed_kmh, hour, peak_flag, prior_delay]])
-                pred = model.predict(feat)[0]
-                ml_eta_s = round(float(pred), 1)
-            except Exception as e:
-                logger.warning(f"Prediction failed for {train_id}, using baseline: {e}")
-                ml_eta_s = baseline_eta_s
-
+        overall_method = method
         variance_s = round(ml_eta_s - baseline_eta_s, 1)
 
         forecasts.append({
@@ -252,13 +268,18 @@ def get_eta_forecasts(state: Any = None) -> Dict[str, Any]:
             "ml_eta_s": ml_eta_s,
             "variance_vs_baseline_s": variance_s,
             "advisory": True,
+            "method": method,
         })
+
+    data_source = meta.get("data_source", "synthetic") if meta else "synthetic"
 
     return {
         "mode": "static_timetable",
         "advisory": True,
         "disclaimer": "Advisory ETA forecast for decision support only - not an autonomous movement authority",
-        "data_source": "synthetic",
+        "data_source": data_source,
+        "method": overall_method,
         "evaluation_metrics": metrics,
         "forecasts": forecasts,
     }
+
